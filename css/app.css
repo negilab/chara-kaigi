@@ -1,0 +1,210 @@
+:root{
+ --bg:#0f1422; --bg2:#121829; --surface:#171e30; --surface2:#1e2639; --line:rgba(255,255,255,.08);
+ --tx:#eef1f7; --sub:#9aa3b8; --mute:#6c7590; --ac:#86a8ff; --acd:rgba(134,168,255,.16); --red:#f0656a;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:radial-gradient(1200px 700px at 20% -10%,#18213a 0%,var(--bg) 55%),var(--bg);font-family:"M PLUS Rounded 1c","Yu Gothic UI","Meiryo",sans-serif;font-weight:500;color:var(--tx);font-size:15px;-webkit-font-smoothing:antialiased;letter-spacing:.02em;min-height:100vh}
+button,input{font:inherit;color:inherit;letter-spacing:inherit}
+button{cursor:pointer;background:none;border:none}
+[hidden]{display:none !important}
+svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.brand{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--sub);font-weight:700;letter-spacing:.08em}
+.logo{width:22px;height:22px;border-radius:7px;background:var(--ac);display:flex;align-items:center;justify-content:center;color:#0f1422}
+.logo svg{width:14px;height:14px;stroke-width:2}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:22px;box-shadow:0 20px 50px rgba(0,0,0,.28)}
+.lbl{font-size:13px;color:var(--sub);margin-bottom:8px;display:block}
+.input{height:52px;width:100%;border-radius:14px;background:var(--bg2);border:1px solid var(--line);display:flex;align-items:center;padding:0 18px;font-size:16px;outline:none}
+.input:focus{border-color:var(--ac);box-shadow:0 0 0 4px var(--acd)}
+.input::placeholder{color:var(--mute)}
+.btn{height:52px;border-radius:14px;display:inline-flex;align-items:center;justify-content:center;gap:9px;font-size:15px;font-weight:700;background:var(--surface2);border:1px solid var(--line);color:var(--tx);padding:0 22px;white-space:nowrap;transition:filter .15s,background .15s}
+.btn:hover{filter:brightness(1.12)}
+.btn:disabled{opacity:.45;cursor:default;filter:none}
+.btn.pri{background:var(--ac);border-color:transparent;color:#0f1422;box-shadow:0 8px 22px rgba(134,168,255,.25)}
+.btn.ghost{background:transparent}
+.btn.done{background:transparent;color:var(--sub);border-color:var(--line);cursor:default}
+.btn svg.i{width:19px;height:19px}
+.full{width:100%}
+.spacer{flex:1}
+.err{color:#f6a4a7;font-size:13px;margin-top:10px;line-height:1.6}
+
+/* 上の帯（入口・キャラ選び・管理） */
+.top{height:60px;display:flex;align-items:center;padding:0 32px;gap:14px;position:relative}
+.top .mid{position:absolute;left:50%;transform:translateX(-50%);font-size:14px;display:flex;align-items:center;gap:10px;white-space:nowrap}
+.top .mid .dot{width:4px;height:4px;border-radius:50%;background:var(--mute)}
+.top .mid .s{color:var(--sub)}
+.top .right{margin-left:auto;display:flex;align-items:center;gap:12px}
+.modetag{font-size:12px;color:#ffd58a;background:rgba(255,200,100,.1);border:1px solid rgba(255,200,100,.3);border-radius:8px;padding:3px 10px}
+h1{font-weight:800}
+
+/* 1 入口 */
+.entry{display:flex;justify-content:center;padding:18px 0 40px}
+.entry .col{width:540px}
+.tag{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--sub);margin:0 0 14px 6px}
+.tag i{width:7px;height:7px;border-radius:50%;background:var(--ac)}
+.entry .card{padding:40px 44px;min-height:620px;display:flex;flex-direction:column}
+.entry h1{font-size:26px;letter-spacing:.04em;margin-bottom:10px}
+.entry .lead{color:var(--sub);font-size:14.5px;line-height:1.8;margin-bottom:30px}
+.step{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--sub);margin:26px 0 12px}
+.step .n{width:22px;height:22px;border-radius:50%;background:var(--ac);color:#0f1422;display:flex;align-items:center;justify-content:center}
+.step .n svg{width:13px;height:13px;stroke-width:2.4}
+.url{display:flex;gap:10px}
+.url .input{flex:1;min-width:0;font-size:14px;white-space:nowrap;padding:0 14px;color:#cfd6e6;gap:10px;overflow:hidden}
+.url .input span{overflow:hidden;text-overflow:ellipsis}
+.url .input svg{color:var(--sub);width:18px;height:18px}
+.copied{font-size:12.5px;color:var(--ac);margin:10px 0 0 4px;display:flex;align-items:center;gap:6px}
+.copied svg{width:15px;height:15px}
+.host{display:flex;align-items:center;gap:16px;padding:18px;border-radius:16px;background:var(--bg2);border:1px solid var(--line);margin-bottom:30px}
+.av{width:56px;height:56px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;color:var(--sub);border:1px solid var(--line)}
+.host .t1{font-size:13px;color:var(--sub)} .host .t2{font-size:17px;font-weight:700;margin-top:3px}
+.ppl{margin-left:auto;font-size:13px;color:var(--sub)}
+.hint{font-size:12.5px;color:var(--mute);text-align:center;margin-top:16px;line-height:1.7}
+
+/* 2 キャラ選び */
+.prep{display:flex;gap:28px;padding:10px 32px 32px;max-width:1280px;margin:0 auto}
+.prep .left{flex:1}
+.prep h1{font-size:24px;margin:6px 0 6px 4px}
+.prep .lead{color:var(--sub);font-size:14px;margin:0 0 22px 4px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.ch{padding:10px;border-radius:20px;background:var(--surface);border:1px solid var(--line);text-align:left;transition:border-color .15s,background .15s}
+.ch:hover{border-color:rgba(134,168,255,.35)}
+.ch .pic{position:relative;overflow:hidden;border-radius:13px;aspect-ratio:16/9}
+.ch .pic img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.ch .nm{font-size:15px;padding:11px 4px 3px;display:flex;align-items:center;justify-content:space-between;min-height:37px}
+.ch.sel{border-color:var(--ac);box-shadow:0 0 0 3px var(--acd),0 16px 36px rgba(0,0,0,.3);background:var(--surface2)}
+.ch.sel .nm{color:var(--ac);font-weight:700}
+.ck{width:24px;height:24px;border-radius:50%;background:var(--ac);color:#0f1422;display:none;align-items:center;justify-content:center}
+.ch.sel .ck{display:flex}
+.ck svg{width:14px;height:14px;stroke-width:2.6}
+.prep .right{width:400px;padding:26px;display:flex;flex-direction:column;flex:none}
+.stagepv{position:relative;height:225px;border-radius:16px;overflow:hidden;background:radial-gradient(260px 200px at 50% 70%,rgba(134,168,255,.30),transparent 70%),linear-gradient(180deg,#232c46,#161d31)}
+.stagepv canvas{position:absolute;left:50%;bottom:0;height:100%;transform:translateX(-50%)}
+.who{display:flex;align-items:baseline;justify-content:space-between;margin:20px 2px 4px}
+.who b{font-size:24px;font-weight:800}
+.desc{font-size:13.5px;color:var(--sub);margin:0 2px 18px;line-height:1.7}
+.row{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--sub);margin-bottom:10px}
+.row svg{width:18px;height:18px;color:var(--tx)}
+.row .r{margin-left:auto;color:var(--ac)}
+.row .r.no{color:var(--mute)}
+.meter{display:flex;gap:4px;align-items:flex-end;height:26px;margin-bottom:18px}
+.meter i{flex:1;border-radius:3px;background:rgba(255,255,255,.08);height:100%}
+.meter i.on{background:var(--ac)}
+.note{font-size:12px;color:var(--mute);line-height:1.7;margin:0 2px 16px}
+
+/* 3 会議 */
+body.meeting{background:#090c15;overflow:hidden}
+.meet{position:fixed;inset:0}
+.stagebox{position:absolute;left:0;top:0;right:0;bottom:104px;overflow:hidden}
+.stagewrap{position:absolute;transform-origin:0 0}
+.stagewrap canvas{position:absolute;left:0;top:0;width:1920px;height:1080px;display:block}
+.overlay{position:absolute;left:0;top:0;width:1920px;height:1080px}
+.frame{position:absolute;inset:0;border:2px solid rgba(134,168,255,.55);pointer-events:none;z-index:50}
+.hit{position:absolute;cursor:grab}
+.hov{position:absolute;transform:translateX(-50%);display:flex;align-items:center;gap:8px;z-index:6}
+.hov .gp{width:40px;height:40px;border-radius:12px;background:rgba(12,16,30,.86);border:1px solid rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;cursor:grab}
+.hov .gp svg{width:10px;height:16px;fill:#e6eaf3}
+.seg{display:flex;height:40px;padding:4px;border-radius:12px;background:rgba(12,16,30,.86);border:1px solid rgba(255,255,255,.18)}
+.seg button{width:40px;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:17px;font-weight:700;color:#c6ccdb}
+.seg button.on{background:var(--ac);color:#0f1422}
+.seg button:not(.on):hover{background:rgba(255,255,255,.08)}
+.hov .nmtag{height:40px;padding:0 14px;border-radius:12px;background:rgba(12,16,30,.86);border:1px solid rgba(255,255,255,.18);display:flex;align-items:center;font-size:17px;font-weight:700;white-space:nowrap}
+.dragging,.dragging *{cursor:grabbing !important}
+.toast2{position:absolute;z-index:40;display:flex;align-items:center;gap:10px;height:46px;padding:0 20px;border-radius:23px;background:rgba(12,16,30,.86);border:1px solid rgba(134,168,255,.4);font-size:19px;font-weight:700;color:#dfe6ff;white-space:nowrap;pointer-events:none}
+.toast2 svg{width:20px;height:20px;color:var(--ac)}
+.edit-hit{position:absolute;cursor:text;border-radius:30px}
+.edit-hit:hover{outline:2px dashed rgba(134,168,255,.45);outline-offset:4px}
+.topic-empty{position:absolute;left:50%;top:92px;transform:translateX(-50%);height:60px;padding:0 34px;border-radius:30px;border:2px dashed rgba(255,255,255,.18);color:var(--mute);font-size:24px;font-weight:700;display:flex;align-items:center;cursor:text;white-space:nowrap}
+.topic-empty:hover{border-color:rgba(134,168,255,.5);color:var(--sub)}
+.inline-edit{position:absolute;height:60px;border-radius:30px;background:rgba(15,20,38,.92);border:2px solid var(--ac);color:var(--tx);font-size:30px;font-weight:800;padding:0 30px;outline:none;z-index:45}
+
+/* 操作バー（録画に映らない） */
+.bar{position:absolute;left:0;right:0;bottom:0;height:104px;display:flex;align-items:center;justify-content:center;gap:16px;background:#0b0f1b;border-top:1px solid rgba(255,255,255,.06)}
+.outnote{position:absolute;left:32px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--mute);display:flex;flex-direction:column;gap:8px}
+.outnote .k{display:flex;align-items:center;gap:8px}
+.outnote .k i{width:18px;height:0;border-top:2px solid rgba(134,168,255,.55)}
+.recpill{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 14px;border-radius:16px;background:rgba(240,101,106,.12);border:1px solid rgba(240,101,106,.35);color:#f6b3b5;font-size:14px}
+.recpill i{width:9px;height:9px;border-radius:50%;background:var(--red);box-shadow:0 0 8px var(--red)}
+.recpill b{font-weight:700;color:#fff;font-family:Consolas,monospace}
+.outright{position:absolute;right:32px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:16px;font-size:14px;color:var(--sub)}
+.outright>span{display:flex;align-items:center;gap:6px}
+.outright svg{width:18px;height:18px}
+.ctl{display:flex;flex-direction:column;align-items:center;gap:6px;width:104px}
+.ctl .b{width:52px;height:52px;border-radius:50%;background:var(--surface2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--tx);transition:filter .15s}
+.ctl:hover .b{filter:brightness(1.2)}
+.ctl.on .b{background:var(--acd);color:var(--ac);border-color:rgba(134,168,255,.35)}
+.ctl.off .b{background:rgba(240,101,106,.14);color:#f4a0a3;border-color:rgba(240,101,106,.45)}
+.ctl span{font-size:12px;color:var(--sub);white-space:nowrap}
+.ctl.leave .b{width:76px;border-radius:26px;background:var(--red);border-color:transparent;color:#fff}
+.recdot{width:16px;height:16px;border-radius:50%;background:var(--red)}
+.ctl.recon .b{background:rgba(240,101,106,.14);border-color:rgba(240,101,106,.45)}
+.ctl.recon .recdot{border-radius:4px;width:14px;height:14px}
+.ctl.recon span{color:#f4a0a3}
+.sep{width:1px;height:36px;background:var(--line);margin:0 6px 20px}
+
+/* お知らせ */
+.toast{position:fixed;left:50%;bottom:128px;transform:translateX(-50%);z-index:200;display:flex;align-items:center;gap:10px;min-height:46px;padding:10px 20px;border-radius:23px;background:rgba(12,16,30,.94);border:1px solid rgba(134,168,255,.4);font-size:14px;font-weight:700;color:#dfe6ff;max-width:80vw;transition:opacity .25s}
+.toast svg{width:18px;height:18px;color:var(--ac)}
+body:not(.meeting) .toast{bottom:32px}
+
+/* ダイアログ */
+.scrim{position:fixed;inset:0;background:rgba(6,9,18,.62);z-index:100;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+.dlg{position:relative;width:600px;max-width:calc(100vw - 32px);max-height:calc(100vh - 32px);overflow:auto;padding:34px 36px 30px;border-radius:24px;background:var(--surface);border:1px solid var(--line);box-shadow:0 30px 80px rgba(0,0,0,.5)}
+.dlg.wide{width:1040px}
+.dlg h2{font-size:22px;font-weight:800;margin-bottom:8px}
+.dlg .lead{font-size:14px;color:var(--sub);line-height:1.7;margin-bottom:24px}
+.dlg .x{position:absolute;right:18px;top:18px;width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--sub)}
+.dlg .x:hover{background:var(--surface2)}
+.fmt{display:flex;align-items:center;gap:12px;height:56px;border-radius:14px;background:var(--bg2);border:1px solid var(--line);padding:0 16px;margin-bottom:22px}
+.fmt .ic{width:34px;height:34px;border-radius:10px;background:var(--acd);color:var(--ac);display:flex;align-items:center;justify-content:center}
+.fmt .ic svg{width:18px;height:18px}
+.fmt .t{font-size:15px}
+.fmt .fn{font-size:12.5px;color:var(--sub);margin-left:auto}
+.prev{border-radius:14px;background:var(--bg2);border:1px solid var(--line);padding:16px 18px;font-size:14px;line-height:2;max-height:206px;overflow:hidden;position:relative}
+.prev .r{display:flex;gap:14px}
+.prev .tm{color:var(--mute);font-family:Consolas,monospace;font-size:13px;width:44px;flex:none}
+.prev .nm{color:var(--sub);width:72px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prev.more::after{content:"";position:absolute;left:0;right:0;bottom:0;height:50px;background:linear-gradient(transparent,var(--bg2))}
+.meta{font-size:12.5px;color:var(--mute);margin:10px 2px 26px}
+.acts{display:flex;justify-content:flex-end;gap:12px;align-items:center}
+.acts .l{margin-right:auto;font-size:12.5px;color:var(--mute);line-height:1.6}
+
+/* 声の調整（管理画面・会議の中で同じ部品） */
+.ve-cols{display:flex;gap:26px}
+.ve-c1{width:360px;flex:none}
+.ve-c2{flex:1;min-width:0}
+.ve-c2 .lbl{margin:0 2px 8px}
+.box{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.ve-sl{display:block}
+.t{display:flex;justify-content:space-between;font-size:14px}
+.t b{font-weight:700;color:var(--ac)}
+.ends{display:flex;justify-content:space-between;font-size:12px;color:var(--mute)}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:20px;background:transparent;cursor:pointer;margin:5px 0 3px;--p:50%}
+input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:linear-gradient(90deg,var(--ac) 0 var(--p),#323a50 var(--p) 100%)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:#fff;margin-top:-7px;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+input[type=range]:focus-visible{outline:2px solid var(--ac);outline-offset:2px;border-radius:4px}
+.fxs{padding:4px 16px}
+.fx{display:flex;align-items:center;gap:12px;height:41px;border-top:1px solid rgba(255,255,255,.05);font-size:14px}
+.fx:first-child{border-top:none}
+.fx .n{width:118px;flex:none}
+.fx input[type=range]{flex:1;margin:0}
+.fx input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px}
+.fx input[type=range]::-webkit-slider-thumb{width:16px;height:16px;margin-top:-6px}
+.fx.off .n{color:var(--mute)}
+.fx.off input[type=range]{opacity:.35}
+.sw{width:36px;height:21px;border-radius:11px;background:#3a4258;position:relative;flex:none}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:15px;height:15px;border-radius:50%;background:#c9cfdc;transition:left .15s}
+.sw.on{background:var(--ac)} .sw.on::after{left:18px;background:#fff}
+.sw:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+
+/* キャラを替える（会議の中） */
+.swapgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:22px}
+.swapgrid .ch{padding:6px;border-radius:14px}
+.swapgrid .ch .pic{border-radius:9px}
+.swapgrid .ch .nm{font-size:13px;padding:7px 2px 1px;min-height:28px}
+.swapgrid .ck{width:20px;height:20px}
+/* 窓が狭いとき: 操作バーの左右の字がボタン列に重ならないように隠す（録画中の表示はバーの上に出す） */
+@media (max-width:1660px){
+  .outnote{display:none}
+  .outright>span:not(.recpill){display:none}
+  .outright{top:auto;bottom:calc(100% + 12px);transform:none}
+}

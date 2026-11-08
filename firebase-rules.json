@@ -1,0 +1,37 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "adminSecret": {
+      ".read": false,
+      ".write": false
+    },
+    "defaults": {
+      ".write": "root.child('adminSecret').exists() && newData.exists() && newData.child('key').val() === root.child('adminSecret').val()",
+      "v": {
+        ".read": true
+      },
+      "key": {
+        ".validate": "newData.isString()"
+      },
+      "$other": {
+        ".validate": false
+      }
+    },
+    "roomTimes": {
+      ".read": true,
+      ".indexOn": [".value"],
+      "$roomId": {
+        ".write": "$roomId.length >= 6 && $roomId.length <= 24",
+        ".validate": "newData.isNumber()"
+      }
+    },
+    "rooms": {
+      "$roomId": {
+        ".read": "$roomId.length >= 6 && $roomId.length <= 24",
+        ".write": "$roomId.length >= 6 && $roomId.length <= 24",
+        ".validate": "newData.hasChildren(['createdAt'])"
+      }
+    }
+  }
+}

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>キャラ会議 管理</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css">
+<style>
+.badge{margin-left:4px;font-size:12px;font-weight:700;color:var(--ac);background:var(--acd);border:1px solid rgba(134,168,255,.35);border-radius:8px;padding:2px 9px;letter-spacing:.06em}
+.closeb{height:38px;font-size:13.5px;padding:0 16px;border-radius:12px}
+.lg{width:420px;margin:150px auto 0;padding:40px 40px 36px}
+.lk{width:52px;height:52px;border-radius:16px;background:var(--acd);color:var(--ac);display:flex;align-items:center;justify-content:center;margin-bottom:20px}
+.lk svg{width:26px;height:26px}
+.lg h1{font-size:22px;margin-bottom:22px}
+.lg .btn{margin-top:16px}
+.lg .note{margin:14px 2px 0}
+.adm{display:flex;gap:22px;padding:6px 32px 32px;min-height:716px}
+.list{width:250px;padding:18px 14px;display:flex;flex-direction:column;gap:6px;flex:none}
+.list .h{font-size:13px;color:var(--sub);margin:0 6px 8px}
+.it{display:flex;align-items:center;gap:12px;height:66px;padding:0 12px;border-radius:14px;font-size:16px;border:1px solid transparent;text-align:left;width:100%}
+.it:hover{background:rgba(255,255,255,.03)}
+.it.sel{background:var(--surface2);border-color:var(--ac);box-shadow:0 0 0 3px var(--acd);color:var(--ac);font-weight:700}
+.it .chg{margin-left:auto;width:8px;height:8px;border-radius:50%;background:#ffd58a}
+.face{width:46px;height:46px;border-radius:50%;overflow:hidden;position:relative;background:linear-gradient(180deg,#26304d,#1a2136);flex:none}
+.face img{position:absolute;width:140px;left:50%;top:-24px;transform:translateX(-50%)}
+.main{flex:1;padding:24px 26px;display:flex;flex-direction:column;min-width:0}
+.ve-top .stagepv{height:250px}
+.ve-top .stagepv img{position:absolute;left:50%;bottom:0;height:100%;transform:translateX(-50%)}
+.nm{font-size:22px;font-weight:800;margin:16px 2px 14px}
+#ve{flex:1}
+.foot{display:flex;align-items:center;gap:12px;margin-top:18px;padding-top:18px;border-top:1px solid var(--line)}
+.foot .note{margin:0 auto 0 0;font-size:13.5px;color:var(--sub);display:flex;align-items:center;gap:8px}
+.foot .note svg{width:18px;height:18px;color:var(--ac)}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script type="module" src="js/admin.js"></script>
+</body>
+</html>
