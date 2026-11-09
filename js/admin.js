@@ -12,6 +12,8 @@ let rec = null;       // 録音中 { ctx, stream, node, chunks, len, t0, timer }
 let recBuf = null;    // 録った地声（AudioBuffer）
 let play = null;      // 再生中 { ctx, engine, src, echo }
 let echoPlay = false; // 再生に「エコー」ボタンの響きをかける
+// 再生をくり返す（この端末に覚える）
+let loopPlay = (() => { try { return localStorage.getItem('ck-admin-loop') === '1'; } catch (e) { return false; } })();
 
 function top(right = '') {
   return `<div class="top"><div class="brand"><div class="logo">${icon('bubble')}</div>キャラ会議<span class="badge">管理</span></div>
@@ -88,6 +90,7 @@ function showMain() {
       <div class="foot"><div class="note">${icon('info')}保存すると、次の会議から全員の初めの声になります</div>
         <button type="button" class="btn" id="b-rec">${icon('mic')}録音</button>
         <button type="button" class="btn" id="b-play" ${recBuf ? '' : 'disabled'}>${icon('play')}再生</button>
+        <span class="lp"><button type="button" class="sw" id="b-loop" role="switch" aria-checked="false" aria-label="くり返す"></button><span>くり返す</span></span>
         <button type="button" class="btn" id="b-listen">${icon('play')}試しに聞く</button>
         <button type="button" class="btn pri" id="b-save" style="width:140px">保存</button></div>
     </div>
@@ -111,6 +114,12 @@ function showMain() {
   $('#b-listen').addEventListener('click', () => (engine ? stopListen() : startListen()));
   $('#b-rec').addEventListener('click', () => (rec ? stopRec() : startRec()));
   $('#b-play').addEventListener('click', () => (play ? stopPlay() : startPlay()));
+  $('#b-loop').addEventListener('click', () => {
+    loopPlay = !loopPlay;
+    try { localStorage.setItem('ck-admin-loop', loopPlay ? '1' : '0'); } catch (e) { /* なし */ }
+    if (play) play.src.loop = loopPlay;   // 再生中でも切り替わる
+    paintRec();
+  });
   $('#ebx').addEventListener('input', (ev) => {
     const k = ev.target.dataset.ek;
     if (!k) return;
@@ -124,6 +133,7 @@ function showMain() {
     paintEcho();
   });
   paintEcho();
+  paintRec();
   select(sel);
 }
 
@@ -249,6 +259,8 @@ function paintRec() {
   const p = $('#b-play');
   if (p) {
     p.disabled = !recBuf || !!rec;
+    const lp = $('#b-loop');
+    if (lp) { lp.classList.toggle('on', loopPlay); lp.setAttribute('aria-checked', loopPlay ? 'true' : 'false'); }
     p.innerHTML = play ? `${icon('stop')}止める` : `${icon('play')}再生`;
   }
 }
@@ -292,6 +304,7 @@ async function startPlay() {
   echo.hold(echoPlay);
   const src = ctx.createBufferSource();
   src.buffer = recBuf;
+  src.loop = loopPlay;   // くり返すときは、止めるまで鳴らす
   src.connect(eng.input);
   const p = play = { ctx, engine: eng, src, echo };
   // 加工の効果（エコーなど）の余韻が切れないよう、少し待ってから止める

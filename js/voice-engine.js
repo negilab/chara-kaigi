@@ -112,7 +112,7 @@
   ];
   function isArtId(v) { return typeof v === 'string' && ART_LIST.some(function (a) { return a.id === v; }); }
 
-  var PITCH_MIN = -12, PITCH_MAX = 12, TONE_MIN = -10, TONE_MAX = 10;
+  var PITCH_MIN = -12, PITCH_MAX = 24, TONE_MIN = -10, TONE_MAX = 10;
   var NAME_MAX = 20;
 
   function clamp(v, lo, hi) {
