@@ -38,21 +38,21 @@
       { k: 'vol', label: '音量', min: 5, max: 150, step: 1, unit: '%', def: function (a) { return Math.round(80 / (1 + 1.5 * a)); } }
     ],
     phaser: [
-      { k: 'speed', label: '速さ', min: 0.05, max: 3, step: 0.05, unit: 'Hz', def: function (a) { return Math.round((0.2 + 0.8 * a) * 100) / 100; } },
+      { k: 'speed', label: '速さ', min: 0.05, max: 6, step: 0.05, unit: 'Hz', def: function (a) { return Math.round((0.2 + 0.8 * a) * 100) / 100; } },
       { k: 'depth', label: '深さ', min: 100, max: 1500, step: 10, unit: 'Hz', def: function (a) { return Math.round(300 + 600 * a); } }
     ],
     flanger: [
-      { k: 'speed', label: '速さ', min: 0.05, max: 3, step: 0.05, unit: 'Hz', def: function (a) { return Math.round((0.15 + 0.5 * a) * 100) / 100; } },
+      { k: 'speed', label: '速さ', min: 0.05, max: 6, step: 0.05, unit: 'Hz', def: function (a) { return Math.round((0.15 + 0.5 * a) * 100) / 100; } },
       { k: 'depth', label: '深さ', min: 0.2, max: 5, step: 0.1, unit: 'ms', def: function (a) { return r1((0.001 + 0.0025 * a) * 1000); } },
       { k: 'fb', label: '強さ', min: 0, max: 95, step: 1, unit: '%', def: function (a) { return Math.round((0.3 + 0.5 * a) * 100); } }
     ],
     chorus: [
-      { k: 'speed', label: '速さ', min: 0.2, max: 4, step: 0.1, unit: 'Hz', def: function () { return 0.8; } },
+      { k: 'speed', label: '速さ', min: 0.2, max: 8, step: 0.1, unit: 'Hz', def: function () { return 0.8; } },
       { k: 'depth', label: '深さ', min: 0.5, max: 8, step: 0.1, unit: 'ms', def: function (a) { return r1((0.001 + 0.004 * a) * 1000); } },
       AMT
     ],
     tremolo: [
-      { k: 'speed', label: '速さ', min: 1, max: 15, step: 0.5, unit: 'Hz', def: function (a) { return r1(3 + 6 * a); } },
+      { k: 'speed', label: '速さ', min: 1, max: 30, step: 0.5, unit: 'Hz', def: function (a) { return r1(3 + 6 * a); } },
       { k: 'depth', label: '深さ', min: 0, max: 100, step: 1, unit: '%', def: function (a) { return Math.round((0.3 + 0.7 * a) * 100); } }
     ],
     robot: [
