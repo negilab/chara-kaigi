@@ -170,6 +170,30 @@ body:not(.meeting) .toast{bottom:32px}
 .meta{font-size:12.5px;color:var(--mute);margin:10px 2px 26px}
 .acts{display:flex;justify-content:flex-end;gap:12px;align-items:center}
 .acts .l{margin-right:auto;font-size:12.5px;color:var(--mute);line-height:1.6}
+/* 録画の前の窓（内容・ファイルの種類・大きさ） */
+.ropts{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+.ropt{flex:1 1 150px;min-height:48px;padding:8px 14px;border-radius:12px;background:var(--bg2);border:1px solid var(--line);display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:2px;text-align:left}
+.ropt .rm{font-size:15px;font-weight:700}
+.ropt .rs{font-size:12px;color:var(--sub)}
+.ropt.on{border-color:var(--ac);background:var(--acd);box-shadow:0 0 0 2px var(--acd)}
+.ropt.on .rm{color:var(--ac)}
+.ropts.rows .ropt{flex-basis:100%;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:2px 12px}
+.rnote{font-size:12.5px;color:var(--mute);line-height:1.6;margin:-8px 2px 18px}
+/* BGM */
+.bgm-now{font-size:14px;color:var(--sub);padding:12px 14px;border-radius:12px;background:var(--bg2);border:1px solid var(--line);margin-bottom:18px;overflow-wrap:anywhere}
+.bgm-now.on{color:var(--tx)}
+.bgm-file{display:flex;align-items:center;gap:12px;flex-wrap:wrap;position:relative}
+.bgm-file .btn{height:48px}
+.bgm-file span{font-size:13px;color:var(--sub);min-width:0;overflow-wrap:anywhere;flex:1 1 160px}
+.vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0 0 0 0);pointer-events:none}
+#bgm-vol{height:44px;margin:0}
+.bgm-loop{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;margin:6px 0 18px;font-size:14px}
+.bgm-loop .sw{position:relative}
+.bgm-loop .sw::before{content:"";position:absolute;inset:-12px -6px}
+.bgmpill{position:absolute;left:clamp(16px,2vw,32px);bottom:calc(100% + 12px);max-width:min(480px,calc(100% - 200px));height:32px;line-height:30px;padding:0 14px;border-radius:16px;background:rgba(12,16,30,.86);border:1px solid rgba(134,168,255,.35);color:#dfe6ff;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:5}
+
+
+
 
 /* 声の調整（管理画面・会議の中で同じ部品） */
 .ve-cols{display:flex;gap:26px}
