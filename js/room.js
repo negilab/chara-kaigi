@@ -2,7 +2,7 @@
 //   /roomTimes/<部屋>            = 作った時刻（古い部屋の掃除に使う）
 //   /rooms/<部屋>/createdAt, hostName
 //   /rooms/<部屋>/members/<人>   = { name, char, joinedAt }
-//   /rooms/<部屋>/state          = { order, sizes, focus, topic, show, sharer }（並び・大きさなど。全員で同じものを見る）
+//   /rooms/<部屋>/state          = { order, sizes, pos, z, topic, show, sharer }（並び・大きさなど。全員で同じものを見る）
 //   /rooms/<部屋>/signals/<宛先>/<連番> = { from, desc | cand }（WebRTC の申し込み・返事・経路の候補）
 export const MAX_MEMBERS = 4;
 const DAY = 24 * 60 * 60 * 1000;

@@ -4,6 +4,7 @@ import { A, ICONS, inkOn } from './common.js';
 export const W = 1920, H = 1080;
 export const SIZE_W = { L: 960, M: 700, S: 480 };
 export const SIZE_LABEL = { L: '大', M: '中', S: '小' };
+const GROW = 1.3;            // 話している人を大きくする倍率
 const VIS = 0.46;            // 絵の幅のうち、キャラが写っている幅
 const SAFE_L = 100, SAFE_R = 1820;
 const AC = '#86a8ff';
@@ -92,27 +93,11 @@ export function freeSpot(placed, w) {
 
 // ---------- 並び ----------
 // people: 並び順の [{ id, size }]。返り値: id → { x（中心）, w（絵の幅）, bottom（下からの位置） }
-// pos があるとき（だれかが自由に動かしたあと）は、ふつうの並びでは pos の場所に置く。pos の無い人は空いているところへ
-export function computeLayout(people, mode, speakerId, pos) {
+// pos があるとき（だれかが自由に動かしたあと）は pos の場所に置く。pos の無い人は空いているところへ（画面共有のあいだも同じ）
+export function computeLayout(people, pos) {
   const out = new Map();
   const n = people.length;
   if (!n) return out;
-  if (mode === 'share') {
-    people.forEach((p, i) => out.set(p.id, { x: 1715 - (n - 1 - i) * 195, w: 480, bottom: 0 }));
-    return out;
-  }
-  if (mode === 'focus' && n > 1) {
-    const sp = people.find((p) => p.id === speakerId) || people[0];
-    out.set(sp.id, { x: 960, w: 1100, bottom: 200 });
-    const others = people.filter((p) => p !== sp);
-    const left = [300, 520], right = [1690, 1470];
-    let li = 0, ri = 0;
-    others.forEach((p, i) => {
-      const x = (i % 2 === 0 && li < left.length) || ri >= right.length ? left[li++] : right[ri++];
-      out.set(p.id, { x, w: 460, bottom: 0 });
-    });
-    return out;
-  }
   if (pos && Object.keys(pos).length) {
     const placed = [];
     people.forEach((p) => {
@@ -167,8 +152,7 @@ export function createStage() {
   function update(model, now) {
     const dt = lastNow ? Math.min(100, now - lastNow) : 16;
     lastNow = now;
-    const mode = model.share ? 'share' : model.focus ? 'focus' : 'row';
-    const lay = computeLayout(model.people, mode, model.speakerId, mode === 'row' ? model.pos : null);
+    const lay = computeLayout(model.people, model.pos);
     const k = 1 - Math.exp(-dt / 120);
     const kt = 1 - Math.exp(-dt / 90);
     const seen = new Set();
@@ -176,9 +160,12 @@ export function createStage() {
       const L = lay.get(p.id);
       seen.add(p.id);
       let a = anim.get(p.id);
-      if (!a) { a = { x: L.x, w: L.w, bottom: L.bottom, talk: 0, hop: 0 }; anim.set(p.id, a); }
+      if (!a) { a = { x: L.x, w: L.w, bottom: L.bottom, talk: 0, hop: 0, grow: 0 }; anim.set(p.id, a); }
       a.x += (L.x - a.x) * k; a.w += (L.w - a.w) * k; a.bottom += (L.bottom - a.bottom) * k;
       a.talk += ((p.talking ? 1 : 0) - a.talk) * kt;
+      // 話す人を大きく: いま話している人を、足もとを動かさずに少しずつ大きく（戻すときはゆっくり）
+      const growT = p.talking && p.id === model.speakerId ? 1 : 0;
+      a.grow += (growT - a.grow) * (1 - Math.exp(-dt / (growT ? 180 : 450)));
       const hopT = p.talking && p.st && p.st.mouth === 2 ? 1 : 0;
       a.hop += (hopT - a.hop) * (1 - Math.exp(-dt / (hopT ? 60 : 160)));
       a.target = L;
@@ -189,7 +176,7 @@ export function createStage() {
 
   function drawPerson(g, key, p, a, o = {}) {
     if (!p.art) return;
-    const w = o.w || a.w, h = w * 0.5625;
+    const w = (o.w || a.w) * (1 + (GROW - 1) * (a.grow || 0)), h = w * 0.5625;
     const x = o.x != null ? o.x : a.x;
     const lift = o.top != null ? 0 : (10 * a.talk + 6 * a.hop);
     const top = o.top != null ? o.top : H - a.bottom - h - lift;
@@ -306,7 +293,7 @@ export function createStage() {
     if (!cap || !cap.text || model.captionsOn === false) return;
     const share = !!model.share;
     const size = share ? 46 : 50;
-    const bottom = share || model.focus ? 132 : 500;
+    const bottom = share ? 132 : 500;
     g.save();
     g.globalAlpha = cap.alpha == null ? 1 : cap.alpha;
     g.font = `800 ${size}px ${FONT}`;

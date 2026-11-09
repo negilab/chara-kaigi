@@ -85,7 +85,6 @@ export const ICONS = {
   play: '<path d="M8 5.5v13l10.5-6.5z"/>',
   stop: '<rect x="6.5" y="6.5" width="11" height="11" rx="2"/>',
   echo: '<path d="M4 12h2.5M9 8.5v7M13 6v12M17 9v6M20.5 11v2"/>',
-  focus: '<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="12" cy="11" r="3.2"/><path d="M7.5 18c.9-2 2.6-3 4.5-3s3.6 1 4.5 3"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>'
 };
 export function icon(name, cls = '') {
