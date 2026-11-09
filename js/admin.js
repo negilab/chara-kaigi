@@ -16,7 +16,7 @@ let echoPlay = false; // 再生に「エコー」ボタンの響きをかける
 let loopPlay = (() => { try { return localStorage.getItem('ck-admin-loop') === '1'; } catch (e) { return false; } })();
 
 function top(right = '') {
-  return `<div class="top"><div class="brand"><div class="logo">${icon('bubble')}</div>キャラ会議<span class="badge">管理</span></div>
+  return `<div class="top"><div class="brand"><div class="logo">${icon('bubble')}</div>meet'<span class="badge">管理</span></div>
     <div class="right">${isLocalMode() ? '<span class="modetag">試験モード</span>' : ''}${right}</div></div>`;
 }
 

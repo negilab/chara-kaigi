@@ -71,7 +71,7 @@ function toast(msg, ms = 3200) {
 }
 
 function topBar(mid = '') {
-  return `<div class="top"><div class="brand"><div class="logo">${icon('bubble')}</div>キャラ会議</div>
+  return `<div class="top"><div class="brand"><div class="logo">${icon('bubble')}</div>meet'</div>
     <div class="mid">${mid}</div>
     <div class="right">${isLocalMode() ? '<span class="modetag" title="firebase-config.js に設定値が入るまでは、同じ PC の同じ Chrome のタブどうしだけがつながります">試験モード</span>' : ''}</div></div>`;
 }
