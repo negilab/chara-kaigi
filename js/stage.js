@@ -263,7 +263,7 @@ export function createStage() {
   }
 
   function drawShow(g, model) {
-    const show = model.show || 'キャラ会議';
+    const show = model.show || "meet'";
     g.save();
     g.font = `800 ${model.share ? 24 : 30}px ${FONT}`;
     g.letterSpacing = model.share ? '1.4px' : '1.8px';

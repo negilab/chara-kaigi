@@ -49,6 +49,9 @@ const S = {
 };
 
 const NAME_MAX = 20;
+// 舞台の左上の番組名（空のときの名前）
+const SHOW_DEFAULT = "meet'";
+const SHOW_MAX = 20;
 // 携帯の画面（縦の狭い幅・横の低い高さ）か、指で触る端末か
 const phoneMQ = matchMedia('(max-width:700px), (max-height:500px) and (orientation:landscape)');
 const coarseMQ = matchMedia('(pointer:coarse)');
@@ -99,6 +102,8 @@ function showCreate(done) {
       <div class="lead">名前を入れて部屋を作ると、招待用の URL ができます。<br>URL を送れば、最大${MAX_MEMBERS}人まで入れます。</div>
       <label class="lbl" for="in-name">あなたの名前</label>
       <input class="input" id="in-name" maxlength="${NAME_MAX}" value="${esc(S.name || savedName())}" ${done ? 'disabled' : ''}>
+      <label class="lbl" for="in-show" style="margin-top:14px">番組名（なくてもかまいません）</label>
+      <input class="input" id="in-show" maxlength="${SHOW_MAX}" placeholder="${SHOW_DEFAULT}" value="${esc(S.showInit || '')}" ${done ? 'disabled' : ''}>
       <div style="margin-top:14px">${done
         ? `<div class="btn done full">${icon('check')}部屋を作りました</div>`
         : `<button class="btn full" type="submit" id="b-create">部屋を作る</button>`}</div>
@@ -120,7 +125,8 @@ function showCreate(done) {
       $('#b-create').disabled = true;
       try {
         S.name = name; rememberName(name);
-        S.roomId = await createRoom(S.db, name);
+        S.showInit = $('#in-show').value.trim();
+        S.roomId = await createRoom(S.db, name, S.showInit || SHOW_DEFAULT);
         S.hostName = name;
         history.replaceState(null, '', roomUrl(S.roomId));
         showCreate(true);
@@ -534,7 +540,7 @@ function buildModel(now, key) {
   }
   return {
     key, people, share, speakerId: S.speakerId,
-    topic: S.state.topic || '', show: S.state.show || 'キャラ会議', caption, captionsOn: S.captionsOn, live: liveModel(now),
+    topic: S.state.topic || '', show: S.state.show || SHOW_DEFAULT, caption, captionsOn: S.captionsOn, live: liveModel(now),
     pos: posMap(), z: S.state.z || {}
   };
 }
@@ -673,7 +679,7 @@ function paintEditHits() {
   const box = $('#edits');
   if (!box) return;
   const st = S.state;
-  const show = st.show || 'キャラ会議';
+  const show = st.show || SHOW_DEFAULT;
   measureCtx.font = '800 30px "M PLUS Rounded 1c"';
   measureCtx.letterSpacing = '1.8px';
   const sw = 46 + 14 + measureCtx.measureText(show).width;
@@ -693,7 +699,7 @@ function paintEditHits() {
 function startInlineEdit(kind) {
   if (touchUi()) { editDialog(kind); return; }
   const ov = $('#overlay');
-  const cur = kind === 'topic' ? (S.state.topic || '') : (S.state.show || 'キャラ会議');
+  const cur = kind === 'topic' ? (S.state.topic || '') : (S.state.show || SHOW_DEFAULT);
   const inp = document.createElement('input');
   inp.className = 'inline-edit';
   inp.maxLength = kind === 'topic' ? 30 : 20;
@@ -711,7 +717,7 @@ function startInlineEdit(kind) {
     inp.remove();
     if (!save) return;
     if (kind === 'topic') S.room.setState({ topic: v });
-    else S.room.setState({ show: v || 'キャラ会議' });
+    else S.room.setState({ show: v || SHOW_DEFAULT });
   };
   inp.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter') finish(true);
@@ -986,7 +992,7 @@ function paintPersonSheet() {
 }
 function editDialog(kind) {
   const topic = kind === 'topic';
-  const cur = topic ? (S.state.topic || '') : (S.state.show || 'キャラ会議');
+  const cur = topic ? (S.state.topic || '') : (S.state.show || SHOW_DEFAULT);
   const scrim = openDialog(`
     <button type="button" class="x" aria-label="閉じる">${icon('close')}</button>
     <h2>${topic ? 'お題' : '番組名'}</h2>
@@ -1003,7 +1009,7 @@ function editDialog(kind) {
     const v = inp.value.trim();
     closeDialog();
     if (topic) S.room.setState({ topic: v });
-    else S.room.setState({ show: v || 'キャラ会議' });
+    else S.room.setState({ show: v || SHOW_DEFAULT });
   });
 }
 

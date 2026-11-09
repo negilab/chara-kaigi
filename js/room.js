@@ -35,10 +35,10 @@ export async function cleanupOldRooms(db) {
   }
 }
 
-export async function createRoom(db, hostName) {
+export async function createRoom(db, hostName, show) {
   const id = newRoomId();
   const now = Date.now();
-  await db.set(`rooms/${id}`, { createdAt: now, hostName, state: { show: 'キャラ会議', topic: '' } });
+  await db.set(`rooms/${id}`, { createdAt: now, hostName, state: { show: show || "meet'", topic: '' } });
   await db.set(`roomTimes/${id}`, now);
   return id;
 }
