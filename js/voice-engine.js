@@ -11,6 +11,7 @@
     { key: 'echo', label: 'ディレイ' },   // 保存の名前は echo のまま（前に保存した値がそのまま使える）
     { key: 'reverb', label: 'リバーブ' },
     { key: 'distortion', label: 'ディストーション' },
+    { key: 'mellow', label: 'まろやか' },
     { key: 'phaser', label: 'フェイザー' },
     { key: 'flanger', label: 'フランジャー' },
     { key: 'chorus', label: 'コーラス' },
@@ -32,6 +33,10 @@
     reverb: [
       { k: 'size', label: '響く広さ', min: 0.5, max: 5, step: 0.1, unit: '秒', def: function () { return 2.2; } },
       AMT
+    ],
+    mellow: [
+      { k: 'round', label: '丸さ', min: 1500, max: 8000, step: 50, unit: 'Hz', def: function (a) { return Math.round((6000 - 4000 * a) / 50) * 50; } },
+      { k: 'smooth', label: 'なめらかさ', min: 0, max: 100, step: 1, unit: '', def: function (a) { return Math.round(20 + 60 * a); } }
     ],
     distortion: [
       { k: 'drive', label: '歪み', min: 1, max: 40, step: 0.5, unit: '倍', def: function (a) { return r1(1 + 30 * a); } },
@@ -364,6 +369,28 @@
       fx.distortion = st;
     })();
 
+    // まろやか: 高い音をやわらかく削り（ローパス）、大きさの差をゆるくならす（コンプレッサー）
+    (function () {
+      var st = makeStage(ctx);
+      var lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.5; lp.frequency.value = 6000;
+      var comp = ctx.createDynamicsCompressor();
+      comp.knee.value = 12; comp.attack.value = 0.01; comp.release.value = 0.25; comp.threshold.value = -16; comp.ratio.value = 2;
+      var mk = ctx.createGain();   // ならしたぶん小さくなる音を少し戻す
+      st.input.connect(lp); lp.connect(comp); comp.connect(mk); mk.connect(st.wet);
+      st.set = function (on, k, e) {
+        if (!on) { st.mix(1, 0); return; }   // 切っているときは素通し
+        var cut = dv(e, 'round', (6000 - 4000 * k));    // 強さが上がるほど低く（丸く）
+        var sm = dv(e, 'smooth', 20 + 60 * k) / 100;     // 強さが上がるほど強くならす
+        setP(ctx, lp.frequency, cut);
+        setP(ctx, comp.threshold, -10 - 30 * sm);        // -10〜-40dB
+        setP(ctx, comp.ratio, 1.5 + 4.5 * sm);           // 1.5〜6
+        setP(ctx, mk.gain, 1 + 0.6 * sm);
+        st.mix(0, 1);
+      };
+      st.nodes = { cutoff: lp.frequency, threshold: comp.threshold, ratio: comp.ratio, makeup: mk.gain };
+      fx.mellow = st;
+    })();
+
     // フェイザー
     (function () {
       var st = makeStage(ctx);
@@ -586,7 +613,7 @@
     });
     var prev = muffle;
     eqs.forEach(function (q) { prev.connect(q); prev = q; });
-    var order = ['distortion', 'robot', 'radio', 'phaser', 'flanger', 'chorus', 'tremolo', 'echo', 'reverb'];
+    var order = ['distortion', 'mellow', 'robot', 'radio', 'phaser', 'flanger', 'chorus', 'tremolo', 'echo', 'reverb'];
     order.forEach(function (k) { prev.connect(fx[k].input); prev = fx[k].output; });
     prev.connect(limiter);
     limiter.connect(clip);
