@@ -48,6 +48,12 @@ const S = {
 };
 
 const NAME_MAX = 20;
+// 携帯の画面（縦の狭い幅・横の低い高さ）か、指で触る端末か
+const phoneMQ = matchMedia('(max-width:700px), (max-height:500px) and (orientation:landscape)');
+const coarseMQ = matchMedia('(pointer:coarse)');
+const touchUi = () => phoneMQ.matches || coarseMQ.matches;
+// 画面共有は iPhone・iPad では使えない（getDisplayMedia がない）
+const CAN_SHARE = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
 
 // ---------- 小さな道具 ----------
 let toastTimer = 0;
@@ -369,6 +375,7 @@ function onMembers(m) {
   // 画面共有していた人がいなくなったら、共有の印を消す
   if (S.state.sharer && !m[S.state.sharer]) S.room.setState({ sharer: null });
   paintBarInfo();
+  paintPeople();
 }
 
 function onStateChange() {
@@ -376,6 +383,8 @@ function onStateChange() {
   if (S.share && st.sharer && st.sharer !== S.myId) stopShare(true);
   paintBar();
   paintEditHits();
+  paintPeople();
+  paintPersonSheet();
 }
 
 function onPeerData(id, m) {
@@ -481,7 +490,7 @@ function buildModel(now, key) {
 }
 
 // ---- 会議の画面 ----
-let stageCtx = null, fitK = 1, hover = null, drag = null, dragStart = null;
+let stageCtx = null, fitK = 1, hover = null, drag = null, dragStart = null, tapId = null;
 
 function ctl(id, ic, label, cls = '') {
   return `<button type="button" class="ctl ${cls}" id="${id}"><span class="b">${ic}</span><span>${label}</span></button>`;
@@ -501,14 +510,15 @@ function showMeeting() {
         <div class="frame"></div>
       </div>
     </div></div>
+    <div class="people" id="people"></div>
     <div class="bar" id="bar">
       <div class="outnote"><div class="k"><i></i>ここより上が録画される範囲（1920×1080）</div><div>この操作バーは録画に映りません</div></div>
       ${ctl('c-mic', icon('mic'), 'マイク オン', 'on')}
       ${ctl('c-swap', icon('swap'), 'キャラを替える')}
-      ${ctl('c-share', icon('share'), '画面共有')}
+      ${CAN_SHARE ? ctl('c-share', icon('share'), '画面共有') : ''}
       ${ctl('c-cc', icon('cc'), '字幕 オン', 'on')}
       ${ctl('c-focus', icon('focus'), '話す人を大きく')}
-      ${ctl('c-save', icon('save'), '文字起こしを保存')}
+      ${ctl('c-save', icon('save'), '文字起こし<wbr>を保存')}
       ${ctl('c-rec', '<span class="recdot"></span>', '録画')}
       <div class="sep"></div>
       ${ctl('c-leave', icon('leave'), '退室', 'leave')}
@@ -521,16 +531,18 @@ function showMeeting() {
   window.addEventListener('resize', fitStage);
   $('#c-mic').addEventListener('click', toggleMic);
   $('#c-swap').addEventListener('click', () => openVoiceDialog(true));
-  $('#c-share').addEventListener('click', () => (S.share ? stopShare() : startShare()));
+  if (CAN_SHARE) $('#c-share').addEventListener('click', () => (S.share ? stopShare() : startShare()));
   $('#c-cc').addEventListener('click', () => { S.captionsOn = !S.captionsOn; paintBar(); });
   $('#c-focus').addEventListener('click', () => S.room.setState({ focus: !S.state.focus }));
   $('#c-save').addEventListener('click', () => { if (!saveTranscript()) toast('まだ発言がありません'); });
   $('#c-rec').addEventListener('click', () => (S.rec ? stopRec() : startRec()));
   $('#c-leave').addEventListener('click', askLeave);
   setupStagePointer();
+  setupPeople();
   paintBar();
   paintBarInfo();
   paintEditHits();
+  paintPeople();
 }
 
 function fitStage() {
@@ -593,6 +605,7 @@ function paintEditHits() {
 }
 
 function startInlineEdit(kind) {
+  if (touchUi()) { editDialog(kind); return; }
   const ov = $('#overlay');
   const cur = kind === 'topic' ? (S.state.topic || '') : (S.state.show || 'キャラ会議');
   const inp = document.createElement('input');
@@ -665,6 +678,8 @@ function showHover(id) {
 function setupStagePointer() {
   const ov = $('#overlay');
   ov.addEventListener('click', (ev) => {
+    // 指で人に触れたら、その人の大きさ・並びの窓を開く（click のあとに開くと、同じタップで窓の中を押さない）
+    if (tapId) { const id = tapId; tapId = null; openPersonSheet(id); return; }
     const e = ev.target.closest('[data-edit]');
     if (e) { startInlineEdit(e.dataset.edit); return; }
     const sz = ev.target.closest('[data-size]');
@@ -691,20 +706,23 @@ function setupStagePointer() {
       t.style.top = `${Math.max(20, pt.y - 360 * 0.25 + 20)}px`;
       return;
     }
+    if (ev.pointerType && ev.pointerType !== 'mouse') return;
     if (ev.target.closest('#hov')) return;
     showHover(layoutMode() === 'row' ? personAt(pt) : null);
   });
   ov.addEventListener('pointerleave', () => { if (!drag && !dragStart) showHover(null); });
   ov.addEventListener('pointerdown', (ev) => {
+    tapId = null;
     if (ev.button !== 0 || layoutMode() !== 'row') return;
     if (ev.target.closest('[data-size]') || ev.target.closest('[data-edit]') || ev.target.closest('.inline-edit')) return;
     const pt = toStage(ev);
     const id = ev.target.closest('#grip') ? hover : personAt(pt);
     if (!id) return;
-    dragStart = { id, cx: ev.clientX, cy: ev.clientY };
+    dragStart = { id, cx: ev.clientX, cy: ev.clientY, touch: !!ev.pointerType && ev.pointerType !== 'mouse' };
     ov.setPointerCapture(ev.pointerId);
   });
-  const end = () => {
+  const end = (ev) => {
+    const tapped = ev && ev.type === 'pointerup' && dragStart && dragStart.touch && !drag ? dragStart.id : null;
     if (drag && drag.targetId) {
       const ord = orderedIds();
       const i = ord.indexOf(drag.id), j = ord.indexOf(drag.targetId);
@@ -713,9 +731,91 @@ function setupStagePointer() {
     drag = null; dragStart = null;
     $('#dragtoast').hidden = true;
     document.body.classList.remove('dragging');
+    if (tapped) tapId = tapped;
   };
   ov.addEventListener('pointerup', end);
   ov.addEventListener('pointercancel', end);
+}
+
+// ---- 指で触る端末の操作: 参加者ごとの大きさ・並び（縦向きは画面の下の欄、横向きは人に触れると窓で出る） ----
+function setSize(id, z) { S.room.setState({ [`sizes/${id}`]: z }); }
+function movePerson(id, dir) {
+  const ord = orderedIds();
+  const i = ord.indexOf(id), j = i + dir;
+  if (i < 0 || j < 0 || j >= ord.length) return;
+  [ord[i], ord[j]] = [ord[j], ord[i]];
+  S.room.setState({ order: ord });
+}
+function personCtl(id, i, n) {
+  const size = (S.state.sizes || {})[id] || 'L';
+  const row = layoutMode() === 'row';
+  return `<div class="pc-seg" role="group" aria-label="大きさ">${['L', 'M', 'S'].map((z) => `<button type="button" data-id="${esc(id)}" data-size="${z}" class="${z === size ? 'on' : ''}" aria-pressed="${z === size}" ${row ? '' : 'disabled'}>${SIZE_LABEL[z]}</button>`).join('')}</div>
+    <div class="pc-mv"><button type="button" data-id="${esc(id)}" data-move="-1" aria-label="左へ" ${i === 0 ? 'disabled' : ''}>${icon('arrow')}</button><button type="button" data-id="${esc(id)}" data-move="1" aria-label="右へ" ${i === n - 1 ? 'disabled' : ''}>${icon('arrow')}</button></div>`;
+}
+function onPersonCtl(ev) {
+  const b = ev.target.closest('button[data-id]');
+  if (!b || b.disabled) return;
+  if (b.dataset.size) setSize(b.dataset.id, b.dataset.size);
+  else if (b.dataset.move) movePerson(b.dataset.id, Number(b.dataset.move));
+  else if (b.dataset.edit) editDialog(b.dataset.edit);
+}
+function setupPeople() { $('#people').addEventListener('click', onPersonCtl); }
+function paintPeople() {
+  const box = $('#people');
+  if (!box || S.screen !== 'meet') return;
+  const ids = orderedIds();
+  const mode = layoutMode();
+  const note = mode === 'row' ? '並びと大きさは全員に反映されます' : mode === 'focus' ? '「話す人を大きく」のあいだは、大きさを替えられません' : '画面共有のあいだは、大きさを替えられません';
+  box.innerHTML = `<div class="pp-h"><span>参加者 ${ids.length}人</span>
+      <span class="pp-ed"><button type="button" data-id="-" data-edit="show">番組名</button><button type="button" data-id="-" data-edit="topic">お題</button></span></div>
+    ${ids.map((id, i) => `<div class="pp-r"><span class="pp-n">${esc(personName(id))}${id === S.myId ? '<i>あなた</i>' : ''}</span>${personCtl(id, i, ids.length)}</div>`).join('')}
+    <div class="pp-note">${note}</div>`;
+}
+let sheetId = null;
+function openPersonSheet(id) {
+  if (layoutMode() !== 'row' || !S.stage.anim.has(id)) return;
+  const scrim = openDialog('<div id="psheet"></div>', () => { sheetId = null; });
+  sheetId = id;
+  scrim.querySelector('.dlg').classList.add('sheet');
+  $('#psheet', scrim).addEventListener('click', (ev) => {
+    if (ev.target.closest('#b-pok') || ev.target.closest('#b-px')) { closeDialog(); return; }
+    onPersonCtl(ev);
+  });
+  paintPersonSheet();
+}
+function paintPersonSheet() {
+  const box = $('#psheet');
+  if (!box || !sheetId) return;
+  const ids = orderedIds();
+  const i = ids.indexOf(sheetId);
+  if (i < 0) { closeDialog(); return; }
+  box.innerHTML = `<button type="button" class="x" aria-label="閉じる" id="b-px">${icon('close')}</button>
+    <h2>${esc(personName(sheetId))}</h2>
+    <div class="lead">並びと大きさは全員に反映されます</div>
+    <div class="pp-r">${personCtl(sheetId, i, ids.length)}</div>
+    <div class="acts" style="margin-top:20px"><button type="button" class="btn pri" id="b-pok">閉じる</button></div>`;
+}
+function editDialog(kind) {
+  const topic = kind === 'topic';
+  const cur = topic ? (S.state.topic || '') : (S.state.show || 'キャラ会議');
+  const scrim = openDialog(`
+    <button type="button" class="x" aria-label="閉じる">${icon('close')}</button>
+    <h2>${topic ? 'お題' : '番組名'}</h2>
+    <div class="lead">${topic ? 'お題は録画にも映ります。空にすると消えます。' : '番組名は録画にも映ります。'}</div>
+    <form id="f-edit" autocomplete="off">
+      <input class="input" id="in-edit" maxlength="${topic ? 30 : 20}" value="${esc(cur)}" aria-label="${topic ? 'お題' : '番組名'}" placeholder="${topic ? 'お題' : '番組名'}">
+      <div class="acts" style="margin-top:20px"><button type="button" class="btn ghost" id="b-ecancel">やめる</button><button type="submit" class="btn pri">保存</button></div>
+    </form>`);
+  const inp = $('#in-edit', scrim);
+  inp.focus();
+  $('#b-ecancel', scrim).addEventListener('click', () => closeDialog());
+  $('#f-edit', scrim).addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const v = inp.value.trim();
+    closeDialog();
+    if (topic) S.room.setState({ topic: v });
+    else S.room.setState({ show: v || 'キャラ会議' });
+  });
 }
 
 // ---------- 字幕・文字起こし ----------

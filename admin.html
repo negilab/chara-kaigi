@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <title>キャラ会議 管理</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -35,6 +35,27 @@
 .foot{display:flex;align-items:center;gap:12px;margin-top:18px;padding-top:18px;border-top:1px solid var(--line)}
 .foot .note{margin:0 auto 0 0;font-size:13.5px;color:var(--sub);display:flex;align-items:center;gap:8px}
 .foot .note svg{width:18px;height:18px;color:var(--ac)}
+/* 携帯（縦の狭い幅・横向き）: PC の見た目は変えない */
+@media (max-width:700px), (max-height:500px) and (orientation:landscape){
+  .lg{width:auto;max-width:420px;margin:24px max(16px,calc(50% - 210px)) calc(24px + env(safe-area-inset-bottom));padding:28px 22px 26px}
+  .adm{flex-direction:column;gap:14px;min-height:0;padding:6px max(16px,env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+  .list{width:auto;flex-direction:row;flex-wrap:wrap;padding:12px;gap:6px}
+  .list .h{flex:1 1 100%;margin:0 4px 2px}
+  .it{width:calc(50% - 3px);height:52px;font-size:14px;padding:0 10px;gap:10px}
+  .face{width:36px;height:36px}
+  .face img{width:110px;top:-19px}
+  .main{padding:18px}
+  .foot{flex-wrap:wrap}
+  .foot .note{flex:1 1 100%;margin:0 0 4px}
+  .foot .btn{flex:1 1 auto;width:auto !important}
+  .closeb{height:44px}
+  .ve-top .stagepv{aspect-ratio:auto;height:220px}
+}
+@media (max-height:500px) and (orientation:landscape){
+  .lg{margin-top:12px}
+  .it{width:calc(33.33% - 4px)}
+  .ve-top .stagepv{height:200px}
+}
 </style>
 </head>
 <body>

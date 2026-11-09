@@ -4,7 +4,7 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
-body{background:radial-gradient(1200px 700px at 20% -10%,#18213a 0%,var(--bg) 55%),var(--bg);font-family:"M PLUS Rounded 1c","Yu Gothic UI","Meiryo",sans-serif;font-weight:500;color:var(--tx);font-size:15px;-webkit-font-smoothing:antialiased;letter-spacing:.02em;min-height:100vh}
+body{background:radial-gradient(1200px 700px at 20% -10%,#18213a 0%,var(--bg) 55%),var(--bg);font-family:"M PLUS Rounded 1c","Yu Gothic UI","Meiryo",sans-serif;font-weight:500;color:var(--tx);font-size:15px;-webkit-font-smoothing:antialiased;letter-spacing:.02em;min-height:100vh;min-height:100dvh}
 button,input{font:inherit;color:inherit;letter-spacing:inherit}
 button{cursor:pointer;background:none;border:none}
 [hidden]{display:none !important}
@@ -97,7 +97,7 @@ body.meeting{background:#090c15;overflow:hidden}
 .stagebox{position:absolute;left:0;top:0;right:0;bottom:104px;overflow:hidden}
 .stagewrap{position:absolute;transform-origin:0 0}
 .stagewrap canvas{position:absolute;left:0;top:0;width:1920px;height:1080px;display:block}
-.overlay{position:absolute;left:0;top:0;width:1920px;height:1080px}
+.overlay{position:absolute;left:0;top:0;width:1920px;height:1080px;touch-action:none}
 .frame{position:absolute;inset:0;border:2px solid rgba(134,168,255,.55);pointer-events:none;z-index:50}
 .hit{position:absolute;cursor:grab}
 .hov{position:absolute;transform:translateX(-50%);display:flex;align-items:center;gap:8px;z-index:6}
@@ -148,7 +148,7 @@ body:not(.meeting) .toast{bottom:32px}
 
 /* ダイアログ */
 .scrim{position:fixed;inset:0;background:rgba(6,9,18,.62);z-index:100;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
-.dlg{position:relative;width:600px;max-width:calc(100vw - 32px);max-height:calc(100vh - 32px);overflow:auto;padding:34px 36px 30px;border-radius:24px;background:var(--surface);border:1px solid var(--line);box-shadow:0 30px 80px rgba(0,0,0,.5)}
+.dlg{position:relative;width:600px;max-width:calc(100vw - 32px);max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow:auto;padding:34px 36px 30px;border-radius:24px;background:var(--surface);border:1px solid var(--line);box-shadow:0 30px 80px rgba(0,0,0,.5)}
 .dlg.wide{width:1040px}
 .dlg h2{font-size:22px;font-weight:800;margin-bottom:8px}
 .dlg .lead{font-size:14px;color:var(--sub);line-height:1.7;margin-bottom:24px}
@@ -207,4 +207,117 @@ input[type=range]:focus-visible{outline:2px solid var(--ac);outline-offset:2px;b
   .outnote{display:none}
   .outright>span:not(.recpill){display:none}
   .outright{top:auto;bottom:calc(100% + 12px);transform:none}
+}
+
+/* ===== 携帯（iPhone など）: PC の見た目は変えない。ここから下はすべて狭い幅か低い高さのときだけ ===== */
+.people{display:none}
+.pc-mv svg{width:20px;height:20px}
+.pc-mv button:first-child svg{transform:scaleX(-1)}
+.sheet .pp-r{border-top:none;padding:0}
+.pp-r{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.pc-seg{display:flex;padding:3px;border-radius:12px;background:var(--bg2);border:1px solid var(--line);margin-left:auto}
+.pc-seg button{width:44px;height:44px;border-radius:9px;font-size:16px;font-weight:700;color:#c6ccdb}
+.pc-seg button.on{background:var(--ac);color:#0f1422}
+.pc-seg button:disabled{opacity:.4}
+.pc-mv{display:flex;gap:6px}
+.pc-mv button{width:44px;height:44px;border-radius:12px;background:var(--surface2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
+.pc-mv button:disabled{opacity:.35}
+.sheet .pc-seg{margin-left:0}
+.sheet .pp-r{justify-content:space-between}
+
+/* 縦の狭い幅（縦向きの携帯）と、横向きの携帯に共通 */
+@media (max-width:700px), (max-height:500px) and (orientation:landscape){
+  .top{height:auto;min-height:56px;flex-wrap:wrap;row-gap:4px;padding:8px max(16px,env(safe-area-inset-right)) 8px max(16px,env(safe-area-inset-left))}
+  .top .right{gap:8px}
+  .top .mid{position:static;transform:none;order:3;flex:1 1 100%;font-size:13px;white-space:normal;flex-wrap:wrap;row-gap:2px}
+  /* 入口・招待 */
+  .entry{padding:6px max(16px,env(safe-area-inset-right)) calc(28px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+  .entry .col{width:100%;max-width:540px;min-width:0}
+  .entry .card{padding:28px 20px 24px;min-height:0}
+  .url{flex-direction:column}
+  .url .input{height:auto;min-height:52px;white-space:normal;padding:12px 14px;align-items:flex-start}
+  .url .input svg{margin-top:2px}
+  .url .input span{overflow:visible;word-break:break-all;line-height:1.5}
+  .url .btn{width:100%}
+  /* キャラ選び */
+  .prep{flex-direction:column;gap:16px;padding:4px max(16px,env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+  .prep .left{min-width:0}
+  .prep .lead{margin-bottom:16px}
+  .prep .right{width:auto;padding:18px}
+  .stagepv{height:auto;aspect-ratio:16/9}
+  .grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  .ch{padding:6px;border-radius:14px;min-width:0}
+  .ch .pic{border-radius:9px}
+  .ch .nm{font-size:13px;padding:7px 2px 1px;min-height:30px;gap:4px;white-space:nowrap}
+  .ck{width:18px;height:18px;flex:none}
+  .ck svg{width:11px;height:11px}
+  /* 窓 */
+  .scrim{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+  .dlg,.dlg.wide{width:100%;max-width:calc(100vw - 24px);max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));padding:24px 18px 20px;border-radius:20px}
+  .dlg h2{font-size:19px;padding-right:40px}
+  .dlg .x{right:8px;top:8px;width:44px;height:44px}
+  .acts{flex-wrap:wrap;gap:10px}
+  .acts .l{flex:1 1 100%;margin:0 0 2px}
+  .acts .btn{flex:1 1 auto;width:auto !important;padding:0 14px}
+  .ve-cols{flex-direction:column;gap:16px}
+  .ve-c1{width:auto}
+  input[type=range]{height:36px}
+  input[type=range]::-webkit-slider-thumb{width:26px;height:26px;margin-top:-10px}
+  .fx{flex-wrap:wrap;height:auto;padding:4px 0 6px;gap:0 12px}
+  .fx .n{width:auto;flex:1}
+  .fx input[type=range]{flex:1 1 100%}
+  .fx input[type=range]::-webkit-slider-thumb{width:24px;height:24px;margin-top:-10px}
+  .sw{width:46px;height:28px;border-radius:14px}
+  .sw::after{width:22px;height:22px}
+  .sw.on::after{left:21px}
+  .sw::before{content:"";position:absolute;inset:-8px -4px}
+  .fx .sw{margin:0}
+  .swapgrid{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  .swapgrid .ch.sel .ck{display:none}
+  .fmt{flex-wrap:wrap;height:auto;padding:10px 14px;row-gap:2px}
+  .fmt .fn{margin-left:46px;flex:1 1 100%}
+  .prev{line-height:1.8}
+  .prev .r{flex-wrap:wrap;gap:0 10px;margin-bottom:6px}
+  .prev .r>span:last-child{flex:1 1 100%}
+  .toast{left:16px;right:16px;transform:none;margin:0 auto;width:max-content;max-width:calc(100vw - 32px)}
+  body:not(.meeting) .toast{bottom:calc(24px + env(safe-area-inset-bottom))}
+  body.meeting .toast{top:calc(10px + env(safe-area-inset-top));bottom:auto}
+  /* 会議: 書き換えの押し場所を広げる（見た目は同じ） */
+  .edit-hit::before,.topic-empty::before{content:"";position:absolute;inset:-110px -60px}
+}
+
+/* 会議・縦向きの携帯: 舞台を上に寄せ、下に参加者の欄、操作バーは2段 */
+@media (max-width:700px) and (orientation:portrait){
+  .meet{display:flex;flex-direction:column;padding:env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left)}
+  .stagebox{position:relative;inset:auto;flex:none;width:100%;aspect-ratio:16/9}
+  .people{display:block;flex:1;min-height:0;overflow:auto;padding:6px 16px 12px;font-size:14px}
+  .pp-h{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--sub);font-size:13px;padding:4px 0 8px}
+  .pp-ed{display:flex;gap:8px}
+  .pp-ed button{height:44px;padding:0 14px;border-radius:12px;background:var(--surface2);border:1px solid var(--line);font-size:13px;color:var(--tx)}
+  .pp-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
+  .pp-n i{font-style:normal;font-weight:500;font-size:11.5px;color:var(--sub);margin-left:6px}
+  .pp-note{font-size:12px;color:var(--mute);padding-top:8px;line-height:1.6}
+  .bar{position:relative;inset:auto;flex:none;height:auto;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px 4px;align-items:start;padding:10px 6px calc(8px + env(safe-area-inset-bottom))}
+  .ctl{width:auto;min-width:0;gap:4px}
+  .ctl .b{width:48px;height:48px}
+  .ctl span{font-size:10px;line-height:1.25;letter-spacing:0;white-space:normal;text-align:center;word-break:keep-all}
+  .ctl.leave{grid-column:5;grid-row:2}
+  .ctl.leave .b{width:64px}
+  .sep{display:none}
+  .outright{right:16px}
+}
+
+/* 会議・横向きの携帯: 操作バーを低くし、舞台に高さを回す */
+@media (max-height:500px) and (orientation:landscape){
+  .meet{display:flex;flex-direction:column;padding:0 env(safe-area-inset-right) 0 env(safe-area-inset-left)}
+  .stagebox{position:relative;inset:auto;flex:1;min-height:0}
+  .bar{position:relative;inset:auto;flex:none;height:auto;gap:2px;align-items:flex-start;padding:6px 4px calc(4px + env(safe-area-inset-bottom))}
+  .ctl{width:auto;flex:1 1 0;min-width:0;gap:3px}
+  .ctl .b{width:44px;height:44px}
+  .ctl span{font-size:10px;line-height:1.2;white-space:normal;text-align:center;word-break:keep-all}
+  .ctl.leave .b{width:60px}
+  .sep{margin:6px 2px 0;height:32px}
+  .outright{right:16px}
+  .grid{grid-template-columns:repeat(6,minmax(0,1fr))}
+  .stagepv{max-height:220px;aspect-ratio:auto;height:220px}
 }
