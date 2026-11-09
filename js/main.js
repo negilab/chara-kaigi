@@ -7,7 +7,7 @@ import { getDb, isLocalMode } from './db.js';
 import { Room, createRoom, roomInfo, cleanupOldRooms, newMemberId, validRoomId, MAX_MEMBERS } from './room.js';
 import { Mesh } from './mesh.js';
 import { LocalMedia, SND_KEYS, getPref, setPref } from './audio.js';
-import { createStage, W, H, SIZE_LABEL, computeLayout, cleanPos, POS_X, POS_Y } from './stage.js';
+import { createStage, W, H, SIZE_W, SIZE_LABEL, computeLayout, cleanPos, POS_X, POS_Y } from './stage.js';
 import { initFace, detectFace } from './face.js';
 
 const params = new URLSearchParams(location.search);
@@ -387,7 +387,7 @@ function onMembers(m) {
   const starts = ids.map((id) => m[id] && m[id].joinedAt).filter(Boolean);
   if (starts.length) S.meetStart = Math.min(...starts);
   // 画面共有していた人がいなくなったら、共有の印を消す
-  if (S.state.sharer && !m[S.state.sharer]) S.room.setState({ sharer: null });
+  if (S.state.sharer && !m[S.state.sharer]) S.room.setState(Object.assign({ sharer: null }, shareRestorePatch()));
   // BGM を流していた人がいなくなったら、BGM を終える
   if (S.state.bgm && !m[S.state.bgm.owner]) S.room.setState({ bgm: null });
   paintBgm();
@@ -404,7 +404,7 @@ function onStateChange() {
   paintEditHits();
   paintPeople();
   paintPersonSheet();
-  if (!freeOn()) autoPlaced = false;
+  if (!posMap()[S.myId]) autoPlaced = false;   // 自分の置き場所が消えたら（並べ直す・画面共有のあと）、また空き場所に置けるように
   placeMeIfNeeded();
 }
 
@@ -1099,8 +1099,31 @@ async function startShare() {
   S.share = { stream, track, video };
   track.addEventListener('ended', () => stopShare());
   S.mesh.startShare(track, stream);
-  S.room.setState({ sharer: S.myId });
+  S.room.setState(Object.assign({ sharer: S.myId }, shareLayoutPatch()));
   paintBar();
+}
+// 画面共有を始めたら: 全員を「小」にして、舞台の左下・右下へ（並びの順に 左の外・右の外・左の内・右の内…）。
+// 書くのは共有を始めた人だけ。前の置き場所・大きさ・重なりの順は shareSaved に1回だけ控える（すでにあれば控え直さない）
+function shareLayoutPatch() {
+  const ids = orderedIds();
+  const vis = SIZE_W.S * 0.46;    // 「小」の絵のうち、キャラが写っている幅（stage.js の VIS と同じ割合）
+  const M = 40, GAP = 10;          // 端からの余白・となりとのすきま
+  const sizes = {}, pos = {};
+  ids.forEach((id, i) => {
+    sizes[id] = 'S';
+    const k = Math.floor(i / 2);   // 外から何番目か
+    const x = i % 2 === 0 ? M + vis / 2 + k * (vis + GAP) : W - M - vis / 2 - k * (vis + GAP);
+    pos[id] = { x: x / W, y: 1 };
+  });
+  const patch = { sizes, pos };
+  if (!S.state.shareSaved) patch.shareSaved = { has: true, pos: S.state.pos || null, sizes: S.state.sizes || null, z: S.state.z || null };
+  return patch;
+}
+// 画面共有が終わったら: 控えておいた置き場所・大きさ・重なりの順に戻す（共有中に入った人は、空き場所に置かれる）
+function shareRestorePatch() {
+  const sv = S.state.shareSaved;
+  if (!sv) return {};
+  return { pos: sv.pos || null, sizes: sv.sizes || null, z: sv.z || null, shareSaved: null };
 }
 function stopShare(byOther) {
   if (!S.share) return;
@@ -1108,7 +1131,7 @@ function stopShare(byOther) {
   S.share = null;
   S.mesh.stopShare();
   s.stream.getTracks().forEach((t) => t.stop());
-  if (!byOther && S.state.sharer === S.myId) S.room.setState({ sharer: null });
+  if (!byOther && S.state.sharer === S.myId) S.room.setState(Object.assign({ sharer: null }, shareRestorePatch()));
   paintBar();
 }
 
