@@ -80,6 +80,7 @@ export class LocalMedia {
     this.monitor = ac.createGain();
     this.monitor.gain.value = 0;
     this.engine.output.connect(this.monitor);
+    this.holdEcho.output.connect(this.monitor);   // 「エコー」ボタンの響きも、ほかの人に届くのと同じように聞く（BGM・効果音は入れない）
     this.monitor.connect(ac.destination);
     // 録画に入れる音（自分の加工後の声＋みんなの声）
     this.recMix = ac.createGain();
