@@ -2,7 +2,7 @@
 import { E } from './common.js';
 
 // 「音の設定」で選んだもの（この端末に覚える）
-export const SND_KEYS = { mic: 'ck-mic', ns: 'ck-ns', gain: 'ck-micgain', spk: 'ck-spk', remote: 'ck-remotevol' };
+export const SND_KEYS = { mic: 'ck-mic', ns: 'ck-ns2', gain: 'ck-micgain', spk: 'ck-spk', remote: 'ck-remotevol' };
 // BGM・効果音の大きさの基準（つまみの値にこれを掛ける。前は 1 で、大きすぎたため 1/3 に）
 export const BGM_BASE = 1 / 3, SE_BASE = 1 / 3;
 export function getPref(k, d) { try { const v = localStorage.getItem(k); return v == null || v === '' ? d : v; } catch (e) { return d; } }
@@ -18,7 +18,8 @@ export class LocalMedia {
     this.monitorOn = false;
     this.buf = new Float32Array(1024);
     this.micId = getPref(SND_KEYS.mic, '');          // 選んだマイク（無ければ既定のマイク）
-    this.ns = getPref(SND_KEYS.ns, '1') !== '0';     // 雑音を抑える（今までどおり オン）
+    // 雑音を抑える（既定は オフ。オンだと BGM のときに声が途切れたため。前の覚えた値は、名前を ck-ns2 に替えて使わない）
+    this.ns = getPref(SND_KEYS.ns, '0') === '1';
     this.inGainV = Math.min(2, Math.max(0, Number(getPref(SND_KEYS.gain, '100')) / 100 || 0));
   }
 

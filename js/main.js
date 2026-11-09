@@ -1478,6 +1478,7 @@ function openSoundDialog() {
     <div class="meter snd-meter" id="snd-meter">${METER_H.map((h) => `<i style="height:${30 + h * 2.6}%"></i>`).join('')}</div>
     ${rng('snd-gain', Math.round(m.inGainV * 100), 200, 'マイクの音量', '%')}
     ${sw('snd-ns', m.ns, '雑音を抑える')}
+    <div class="snd-note">スピーカーで聞くときはオンにしてください（音が回るのを防ぎます）</div>
     <label class="lbl" for="snd-spk" style="margin-top:14px">スピーカー</label>
     ${CAN_SINK ? '<select class="input snd-sel" id="snd-spk"></select>' : '<div class="snd-note">この端末では選べません</div>'}
     ${rng('snd-rv', remoteVol(), 100, '相手の声の音量', '%')}
