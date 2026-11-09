@@ -38,6 +38,7 @@ const S = {
   remote: new Map(),     // id → { st, char, mic, lv, at, talkAt, audio, shareVideo }
   arts: {},
   stage: createStage(),
+  mouth: 80,             // 口の反応（boot で savedMouth から読み直す）
   speakerId: '',
   caption: null,
   captionsOn: true,
@@ -70,6 +71,18 @@ function topBar(mid = '') {
   return `<div class="top"><div class="brand"><div class="logo">${icon('bubble')}</div>キャラ会議</div>
     <div class="mid">${mid}</div>
     <div class="right">${isLocalMode() ? '<span class="modetag" title="firebase-config.js に設定値が入るまでは、同じ PC の同じ Chrome のタブどうしだけがつながります">試験モード</span>' : ''}</div></div>`;
+}
+
+// 口の反応（0〜100。右ほど敏感）。この端末の、この人だけの設定。MOUTH_DEFAULT が今までどおり
+const MOUTH_DEFAULT = 80;
+function savedMouth() {
+  try { const r = localStorage.getItem('ck-mouth'); const v = Number(r); return r != null && r !== '' && isFinite(v) ? Math.min(100, Math.max(0, v)) : MOUTH_DEFAULT; } catch (e) { return MOUTH_DEFAULT; }
+}
+// 0（鈍い）で +24dB、80 で 0dB、100（敏感）で -6dB
+function setMouth(v, keep) {
+  S.mouth = v;
+  S.anim.setMouthGate((MOUTH_DEFAULT - v) * 0.3);
+  if (keep) { try { localStorage.setItem('ck-mouth', String(v)); } catch (e) { /* なし */ } }
 }
 
 function rememberName(n) { try { localStorage.setItem('ck-name', n); } catch (e) { /* なし */ } }
@@ -288,6 +301,10 @@ function openVoiceDialog(withGrid) {
     <div class="lead">${withGrid ? '選んだキャラの絵と声に替わります。' : ''}声の調整は保存されません。次の会議では初めの声に戻ります。</div>
     ${withGrid ? `<div class="swapgrid" id="swapgrid">${CHARS.map((c) => charCard(c, c.id === S.char)).join('')}</div>` : ''}
     <div id="ve"></div>
+    <div class="box mg"><label class="ve-sl"><div class="t"><span>口の反応</span></div>
+      <input type="range" id="in-mouth" min="0" max="100" step="1">
+      <div class="ends"><span>鈍い</span><span>敏感</span></div></label>
+      <div class="mg-n">キーボードの音などで口が動くときは、鈍いほうへ動かしてください。</div></div>
     <div class="acts" style="margin-top:22px">
       <div class="l">試しに聞くときは、ヘッドホンをつけてください。<br>スピーカーだと音が回って、ピーッと鳴ることがあります。</div>
       <button type="button" class="btn ghost" id="b-reset">初めの声に戻す</button>
@@ -295,6 +312,10 @@ function openVoiceDialog(withGrid) {
       <button type="button" class="btn pri" id="b-ok" style="width:120px">閉じる</button>
     </div>`, () => { if (S.media) S.media.setMonitor(false); }, true);
   const ed = voiceEditor($('#ve', scrim), S.voice, (v) => { S.voice = v; if (S.media) S.media.applyVoice(v); });
+  const mi = $('#in-mouth', scrim);
+  const paintMouth = () => { mi.value = S.mouth; mi.style.setProperty('--p', `${S.mouth}%`); };
+  paintMouth();
+  mi.addEventListener('input', () => { setMouth(Number(mi.value), true); paintMouth(); });
   $('#b-ok', scrim).addEventListener('click', () => closeDialog());
   $('#b-reset', scrim).addEventListener('click', () => {
     S.voice = cleanVoice(S.defaults[S.char]);
@@ -1136,6 +1157,7 @@ try {
 
 // ---------- 始まり ----------
 async function boot() {
+  setMouth(savedMouth(), false);
   try {
     S.db = await getDb();
   } catch (e) {
