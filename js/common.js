@@ -54,7 +54,7 @@ export function loadArt(id) {
     artCache.set(id, A.loadArt(new URL(`../characters/${id}/`, import.meta.url).href, {
       base: 'base.png', mouthOpen: 'mouth_open.png',
       mouthHalf: id === 'sennin' || id === 'gaki' ? 'mouth_half.png' : null,
-      eyesClosed: id === 'okan' || id === 'gaki' ? null : 'eyes_closed.png'
+      eyesClosed: id === 'okan' ? null : 'eyes_closed.png'
     }).catch((e) => { artCache.delete(id); throw e; }));
   }
   return artCache.get(id);
