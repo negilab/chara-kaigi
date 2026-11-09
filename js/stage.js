@@ -68,9 +68,32 @@ function background() {
   return c;
 }
 
+// ---------- 自由な置き場所 ----------
+// pos: id → { x, y }（舞台 1920×1080 に対する割合。x は絵の真ん中、y は絵の下の端）
+export const POS_X = [0.02, 0.98], POS_Y = [0.35, 1.3];
+export function cleanPos(p) {
+  if (!p || typeof p !== 'object') return null;
+  const x = Number(p.x), y = Number(p.y);
+  if (!isFinite(x) || !isFinite(y)) return null;
+  return { x: Math.min(POS_X[1], Math.max(POS_X[0], x)), y: Math.min(POS_Y[1], Math.max(POS_Y[0], y)) };
+}
+// 置き場所の決まっていない人を、空いているところへ（決まった手順なので、だれの画面でも同じ場所になる）
+export function freeSpot(placed, w) {
+  let best = 960, bestD = -Infinity;
+  // 写っている幅が舞台の内側に収まる範囲で探す
+  for (let x = SAFE_L + w * VIS / 2; x <= SAFE_R - w * VIS / 2; x += 40) {
+    let d = Infinity;
+    placed.forEach((q) => { d = Math.min(d, Math.abs(x - q.x) - (q.w + w) * VIS / 2); });
+    if (!placed.length) d = -Math.abs(x - 960);
+    if (d > bestD + 0.5) { bestD = d; best = x; }
+  }
+  return best;
+}
+
 // ---------- 並び ----------
 // people: 並び順の [{ id, size }]。返り値: id → { x（中心）, w（絵の幅）, bottom（下からの位置） }
-export function computeLayout(people, mode, speakerId) {
+// pos があるとき（だれかが自由に動かしたあと）は、ふつうの並びでは pos の場所に置く。pos の無い人は空いているところへ
+export function computeLayout(people, mode, speakerId, pos) {
   const out = new Map();
   const n = people.length;
   if (!n) return out;
@@ -87,6 +110,20 @@ export function computeLayout(people, mode, speakerId) {
     others.forEach((p, i) => {
       const x = (i % 2 === 0 && li < left.length) || ri >= right.length ? left[li++] : right[ri++];
       out.set(p.id, { x, w: 460, bottom: 0 });
+    });
+    return out;
+  }
+  if (pos && Object.keys(pos).length) {
+    const placed = [];
+    people.forEach((p) => {
+      const q = cleanPos(pos[p.id]);
+      if (q) { const L = { x: q.x * W, w: SIZE_W[p.size] || SIZE_W.L, bottom: H - q.y * H }; out.set(p.id, L); placed.push(L); }
+    });
+    people.forEach((p) => {
+      if (out.has(p.id)) return;
+      const w = SIZE_W[p.size] || SIZE_W.L;
+      const L = { x: freeSpot(placed, w), w, bottom: 0, auto: true };
+      out.set(p.id, L); placed.push(L);
     });
     return out;
   }
@@ -131,7 +168,7 @@ export function createStage() {
     const dt = lastNow ? Math.min(100, now - lastNow) : 16;
     lastNow = now;
     const mode = model.share ? 'share' : model.focus ? 'focus' : 'row';
-    const lay = computeLayout(model.people, mode, model.speakerId);
+    const lay = computeLayout(model.people, mode, model.speakerId, mode === 'row' ? model.pos : null);
     const k = 1 - Math.exp(-dt / 120);
     const kt = 1 - Math.exp(-dt / 90);
     const seen = new Set();
@@ -364,39 +401,21 @@ export function createStage() {
     g.__anyTalk = model.people.some((p) => p.talking);
     badges = [];
     const drag = ui && ui.drag;
-    if (drag) {
-      const from = anim.get(drag.id), to = drag.targetId && anim.get(drag.targetId);
-      if (from) slot(g, from.target.x, true);
-      if (to) slot(g, to.target.x, false);
-    }
-    model.people.forEach((p) => {
+    const z = model.z || {};
+    const zs = (p) => (drag && drag.id === p.id ? Infinity : Number(z[p.id]) || 0);
+    // 重なったときは、最後に触れた人（z が大きい人）を前に
+    const order = model.people.map((p, i) => [p, i]).sort((a, b) => zs(a[0]) - zs(b[0]) || a[1] - b[1]).map((x) => x[0]);
+    order.forEach((p) => {
       const a = anim.get(p.id);
       if (!a) return;
-      if (drag && drag.id === p.id) return;
-      const moved = drag && drag.targetId === p.id;
-      drawPerson(g, `${model.key}-${p.id}`, p, a, { alpha: moved ? 0.45 : undefined, small: !!model.share });
-    });
-    if (drag) {
-      const p = model.people.find((q) => q.id === drag.id);
-      const a = anim.get(drag.id);
-      if (p && a) {
-        const w = 640, h = w * 0.5625;
-        const top = drag.py - h * 0.25;
-        drawPerson(g, `${model.key}-ghost`, p, a, { ghost: true, w, x: drag.px, top });
-        // 名前の札
-        g.save();
-        g.font = `700 18px ${FONT}`;
-        g.textBaseline = 'middle';
-        const tw = g.measureText(p.name).width + 28;
-        g.translate(drag.px, top + h * 0.2 - 52 + 17);
-        g.rotate(-3 * Math.PI / 180);
-        pill(g, -tw / 2, -17, tw, 34, 10, 'rgba(12,16,30,.86)', 'rgba(255,255,255,.18)');
-        g.fillStyle = '#eef1f7';
-        g.textAlign = 'center';
-        g.fillText(p.name, 0, 1);
-        g.restore();
+      if (drag && drag.id === p.id) {
+        // ドラッグ中: 指（マウス）の場所に、そのままの大きさで描く
+        const h = a.w * 0.5625;
+        drawPerson(g, `${model.key}-${p.id}`, p, a, { x: drag.ax, top: drag.ay - h });
+        return;
       }
-    }
+      drawPerson(g, `${model.key}-${p.id}`, p, a, { small: !!model.share });
+    });
     badges.forEach((b) => drawBadge(g, b));
     drawCaption(g, model);
     g.restore();
