@@ -115,6 +115,21 @@ export class LocalMedia {
     g.connect(ac.destination);
     this.bgm = { src, g };
   }
+  // 効果音: BGM と同じ通り道（声の加工・口の動き・字幕を通らずに、送る音・録画の音・自分のスピーカーへ）。重ねて鳴らせる
+  playSe(buffer, vol) {
+    const ac = this.ac;
+    if (!ac || !buffer) return;
+    const src = ac.createBufferSource();
+    src.buffer = buffer;
+    const g = ac.createGain();
+    g.gain.value = vol;
+    src.connect(g);
+    g.connect(this.dest);
+    g.connect(this.recMix);
+    g.connect(ac.destination);
+    src.onended = () => { try { g.disconnect(); } catch (e) { /* なし */ } };
+    src.start();
+  }
   setBgmVolume(vol) { if (this.bgm) this.bgm.g.gain.setTargetAtTime(vol, this.ac.currentTime, 0.03); }
   stopBgm() {
     if (!this.bgm) return;

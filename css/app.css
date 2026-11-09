@@ -185,6 +185,14 @@ body:not(.meeting) .toast{bottom:32px}
 .bgm-file{display:flex;align-items:center;gap:12px;flex-wrap:wrap;position:relative}
 .bgm-file .btn{height:48px}
 .bgm-file span{font-size:13px;color:var(--sub);min-width:0;overflow-wrap:anywhere;flex:1 1 160px}
+/* 用意した BGM・効果音 */
+.bgm-list{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
+.bgm-list .btn{height:auto;min-height:48px;white-space:normal;text-align:left;justify-content:flex-start;padding:8px 12px;font-size:13.5px;line-height:1.4}
+.bgm-list .btn svg{flex:none}
+.bgm-list .btn.on{border-color:var(--ac);color:var(--ac);background:var(--acd)}
+.se-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.se-grid .btn{height:56px;padding:0 10px;font-size:15px}
+#se-vol{height:44px;margin:0}
 .vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0 0 0 0);pointer-events:none}
 #bgm-vol{height:44px;margin:0}
 .bgm-loop{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;margin:6px 0 18px;font-size:14px}
@@ -280,6 +288,8 @@ input[type=range]:focus-visible{outline:2px solid var(--ac);outline-offset:2px;b
 
 /* 縦の狭い幅（縦向きの携帯）と、横向きの携帯に共通 */
 @media (max-width:700px), (max-height:500px) and (orientation:landscape){
+  .bgm-list{grid-template-columns:1fr}
+  .se-grid{grid-template-columns:1fr 1fr}
   .top{height:auto;min-height:56px;flex-wrap:wrap;row-gap:4px;padding:8px max(16px,env(safe-area-inset-right)) 8px max(16px,env(safe-area-inset-left))}
   .top .right{gap:8px}
   .top .mid{position:static;transform:none;order:3;flex:1 1 100%;font-size:13px;white-space:normal;flex-wrap:wrap;row-gap:2px}

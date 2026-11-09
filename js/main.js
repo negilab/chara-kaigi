@@ -552,6 +552,7 @@ function showMeeting() {
       ${ctl('c-rec', '<span class="recdot"></span>', '録画')}
       ${ctl('c-echo', icon('echo'), 'エコー')}
       ${ctl('c-bgm', MUSIC_SVG, 'BGM')}
+      ${ctl('c-se', SE_SVG, '効果音')}
       <div class="sep"></div>
       ${ctl('c-leave', icon('leave'), '退室', 'leave')}
       <div class="bgmpill" id="bgmpill" hidden></div>
@@ -569,6 +570,7 @@ function showMeeting() {
   $('#c-save').addEventListener('click', () => { if (!saveTranscript()) toast('まだ発言がありません'); });
   $('#c-rec').addEventListener('click', () => (S.rec ? stopRec() : openRecDialog()));
   $('#c-bgm').addEventListener('click', openBgmDialog);
+  $('#c-se').addEventListener('click', openSeDialog);
   $('#c-leave').addEventListener('click', askLeave);
   setupEchoButton();
   setupStagePointer();
@@ -1265,26 +1267,36 @@ function renderRec(now, force) {
 // 部屋に1曲だけ。だれが流しているかは部屋の状態 bgm: { owner, title, startedAt } で全員が見る。
 // 曲のファイルは送らない。流している人の端末で鳴らした音を、声と同じ音の通り道で届ける（声の加工・口の動き・字幕は通らない）
 const MUSIC_SVG = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17.5V6l10-2v11.5"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/></svg>';
-const BGM = { file: null, vol: 20, loop: true };   // この端末で選んだ曲・音量（%）・くり返す
+const BGM = { file: null, track: null, vol: 20, loop: true };   // この端末で選んだ曲（ファイルか、用意した曲）・音量（%）・くり返す
+// 用意した曲（app/sounds/bgm/）。名前はもとのファイル名から
+const BGM_TRACKS = [
+  '明るい_爽やか_オープニング向き', '明るい_おしゃれ_会議の後ろ向き', 'ゆるい_のほほん_日常', '考え中_とぼけた_なんだろう',
+  'ゆるい_ぐだぐだ_ギャグ向き', '落ち着いた_ローファイ_トーク向き', 'ジングル_華やか_オープニング向き', '落ち着いた_ピアノ_エンディング向き'
+].map((n, i) => {
+  const [a, b, c] = n.split('_');
+  return { title: `${a}・${b}（${c}）`, url: new URL(`../sounds/bgm/bgm${i + 1}.mp3`, import.meta.url).href };
+});
 function bgmTitle(name) { return String(name || '').replace(/\.[^.]+$/, '').slice(0, 40) || '曲'; }
 
 function playBgm() {
-  if (!BGM.file || !S.media || !S.room) return;
+  if ((!BGM.file && !BGM.track) || !S.media || !S.room) return;
   stopBgmLocal();
   const el = new Audio();
   el.setAttribute('playsinline', '');
   el.preload = 'auto';
   el.loop = BGM.loop;
-  const url = URL.createObjectURL(BGM.file);
+  const blob = !BGM.track;
+  const url = blob ? URL.createObjectURL(BGM.file) : BGM.track.url;
+  const title = blob ? bgmTitle(BGM.file.name) : BGM.track.title;
   el.src = url;
   const startedAt = Date.now();
-  const mine = S.bgm = { el, url, startedAt, seen: false };
+  const mine = S.bgm = { el, url, blob, startedAt, seen: false };
   el.addEventListener('ended', () => { if (S.bgm === mine) stopBgmAll(); });
   try { S.media.playBgm(el, BGM.vol / 100); } catch (e) { console.warn(e); }
   // play() は押した手の中で呼ぶ（iPhone では、押した直後でないと鳴らない）
   el.play().then(() => {
     if (S.bgm !== mine) return;
-    S.room.setState({ bgm: { owner: S.myId, title: bgmTitle(BGM.file.name), startedAt } });
+    S.room.setState({ bgm: { owner: S.myId, title, startedAt } });
   }).catch((e) => {
     console.warn(e);
     if (S.bgm === mine) stopBgmLocal();
@@ -1299,7 +1311,7 @@ function stopBgmLocal() {
   S.bgm = null;
   if (S.media) S.media.stopBgm();
   try { b.el.pause(); b.el.removeAttribute('src'); b.el.load(); } catch (e) { /* なし */ }
-  URL.revokeObjectURL(b.url);
+  if (b.blob) URL.revokeObjectURL(b.url);
   paintBgm();
 }
 // 全員の BGM を止める（だれが押してもよい）
@@ -1337,7 +1349,9 @@ function openBgmDialog() {
     <h2>BGM</h2>
     <div class="lead">選んだ曲を、参加している全員に流します。録画にも入ります。曲のファイルは送らず、この端末で鳴らした音だけが届きます。</div>
     <div class="bgm-now" id="bgm-now"></div>
-    <div class="lbl">曲</div>
+    <div class="lbl">用意した曲（押すと流れます）</div>
+    <div class="bgm-list" id="bgm-list">${BGM_TRACKS.map((t, i) => `<button type="button" class="btn" data-bt="${i}">${MUSIC_SVG}<span>${esc(t.title)}</span></button>`).join('')}</div>
+    <div class="lbl">ファイルを選ぶ</div>
     <div class="bgm-file"><label class="btn" for="bgm-in">${MUSIC_SVG}曲を選ぶ</label><span id="bgm-fn"></span>
       <input type="file" id="bgm-in" class="vh" accept="audio/*"></div>
     <label class="lbl" for="bgm-vol" style="margin-top:18px">音量 <b id="bgm-vv"></b></label>
@@ -1351,7 +1365,7 @@ function openBgmDialog() {
     </div>`);
   $('#bgm-in', scrim).addEventListener('change', (ev) => {
     const f = ev.target.files && ev.target.files[0];
-    if (f) BGM.file = f;
+    if (f) { BGM.file = f; BGM.track = null; }
     paintBgmDialog();
   });
   const vol = $('#bgm-vol', scrim);
@@ -1367,7 +1381,13 @@ function openBgmDialog() {
     ev.currentTarget.setAttribute('aria-checked', BGM.loop);
     if (S.bgm) S.bgm.el.loop = BGM.loop;
   });
-  $('#b-bplay', scrim).addEventListener('click', playBgm);
+  $('#b-bplay', scrim).addEventListener('click', () => { BGM.track = null; playBgm(); });
+  $('#bgm-list', scrim).addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-bt]');
+    if (!b) return;
+    BGM.track = BGM_TRACKS[Number(b.dataset.bt)];
+    playBgm();   // 押した手の中で鳴らす（iPhone のため）
+  });
   $('#b-bstop', scrim).addEventListener('click', stopBgmAll);
   $('#b-bclose', scrim).addEventListener('click', () => closeDialog());
   paintBgmDialog();
@@ -1381,6 +1401,49 @@ function paintBgmDialog() {
   $('#bgm-vv').textContent = `${BGM.vol}%`;
   $('#b-bplay').disabled = !BGM.file;
   $('#b-bstop').disabled = !S.state.bgm && !S.bgm;
+  const cur = S.state.bgm;
+  $$('#bgm-list [data-bt]').forEach((b) => b.classList.toggle('on', !!cur && cur.title === BGM_TRACKS[Number(b.dataset.bt)].title));
+}
+
+// ---------- 効果音 ----------
+// 押した人の端末で鳴らし、BGM と同じ通り道で全員に届ける（録画にも入る。声の加工・口の動き・字幕は通らない）。重ねて鳴らせる
+const SE_SVG = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>';
+const SE_LIST = ['ピンポーン！', 'キラキラ', 'ズビシ', 'ぶぶー', 'ジャン！', 'ズーン'].map((label, i) => ({ label, url: new URL(`../sounds/se/se${i + 1}.mp3`, import.meta.url).href }));
+const SE = { vol: 70, bufs: null };
+// 初めて窓を開いたときに、6つとも読み込んでおく（押してすぐ鳴るように）
+function loadSe() {
+  if (SE.bufs || !S.media) return;
+  SE.bufs = SE_LIST.map((s) => fetch(s.url).then((r) => r.arrayBuffer()).then((ab) => S.media.ac.decodeAudioData(ab)).catch((e) => { console.warn(e); return null; }));
+}
+async function playSe(i) {
+  if (!S.media) return;
+  loadSe();
+  const buf = await SE.bufs[i];
+  if (!buf) { toast('この効果音を鳴らせませんでした'); return; }
+  S.media.playSe(buf, SE.vol / 100);
+}
+function openSeDialog() {
+  loadSe();
+  const scrim = openDialog(`
+    <button type="button" class="x" aria-label="閉じる">${icon('close')}</button>
+    <h2>効果音</h2>
+    <div class="lead">押すと、参加している全員に聞こえます。録画にも入ります。続けて押せます。</div>
+    <div class="se-grid" id="se-grid">${SE_LIST.map((s, i) => `<button type="button" class="btn" data-se="${i}">${esc(s.label)}</button>`).join('')}</div>
+    <label class="lbl" for="se-vol" style="margin-top:18px">音量 <b id="se-vv">${SE.vol}%</b></label>
+    <input type="range" id="se-vol" min="0" max="100" step="1" value="${SE.vol}" style="--p:${SE.vol}%">
+    <div class="rnote" style="margin-top:12px">YouTube に載せるなら、使ってよい音（著作権フリーなど）か確かめてください</div>
+    <div class="acts" style="margin-top:14px"><button type="button" class="btn" id="b-seclose">閉じる</button></div>`);
+  $('#se-grid', scrim).addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-se]');
+    if (b) playSe(Number(b.dataset.se));
+  });
+  const vol = $('#se-vol', scrim);
+  vol.addEventListener('input', () => {
+    SE.vol = Number(vol.value);
+    vol.style.setProperty('--p', `${SE.vol}%`);
+    $('#se-vv', scrim).textContent = `${SE.vol}%`;
+  });
+  $('#b-seclose', scrim).addEventListener('click', () => closeDialog());
 }
 
 // ---------- 5 退室 ----------
@@ -1502,7 +1565,7 @@ if (DEBUG) {
     remote: () => Array.from(S.remote.entries()).map(([id, r]) => ({ id, name: personName(id), char: r.char, mouth: r.st && r.st.mouth, mic: r.mic, ageMs: Math.round(performance.now() - r.at), hasAudio: !!r.audio, hasShare: !!r.shareVideo })),
     order: () => orderedIds().map(personName),
     startRec, stopRec, startShare, stopShare, openRecDialog, recTypes,
-    BGM, playBgm, stopBgmAll, openBgmDialog,
+    BGM, BGM_TRACKS, playBgm, stopBgmAll, openBgmDialog, SE, playSe, openSeDialog,
     layout: () => Array.from(S.stage.anim.entries()).map(([id, a]) => ({ name: personName(id), x: Math.round(a.target.x), w: Math.round(a.target.w), bottom: a.target.bottom }))
   };
 }
