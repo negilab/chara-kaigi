@@ -3,13 +3,20 @@
  * 拡張機能（extension/avatar-render.js）からの写し。キャラ会議では次を足した:
  *   loadArt の第2引数（部品のファイル名）、animator.update（描かずに口・瞬き・向きだけ進める）、drawPose（決まった位置と大きさに描く）
  * 絵の部品: base.png（必須）、mouth_open.png、mouth_half.png、eyes_closed.png（無くてもよい）
- * 口はマイクの音量、瞬きは顔の読み取り（読み取れないときは自動）、顔の向きで絵を少し回す・ずらす。
+ * 口はマイクの音量、瞬きは顔の読み取り（読み取れないときは自動）、顔の向きで絵を少し回す・ずらす・台形にゆがめる。
  */
 (function (root) {
   'use strict';
   if (root.VoiceChangerAvatar) return;
 
   var W = 1280, H = 720;
+
+  // ---- 顔を左右に向けたときの見え方（台形にゆがめる）。強さはここで調整する ----
+  var YAW_FULL = 0.36;       // この向き（ラジアン）で効きが最大。今の横ずらしが上限（40px）に届く向き
+  var TURN_SCALE = 0.08;     // 縦の倍率の差。向いた側の反対の端を大きく、向いた側の端を小さく（最大 ±8%）
+  var TURN_SQUEEZE = 0.06;   // 横幅の縮み（最大 6%）
+  var TURN_PARALLAX = 0.025; // 顔の中ほど（目・口）を、外側より多く向きの方へずらす（幅に対して最大 2.5%）
+  var STRIP_PX = 10;         // 細切りの幅（px）。小さいほどなめらかで、重くなる
   var FILES = { base: 'base.png', mouthOpen: 'mouth_open.png', mouthHalf: 'mouth_half.png', eyesClosed: 'eyes_closed.png' };
 
   function loadBitmap(url) {
@@ -76,6 +83,7 @@
     var pose = { roll: 0, yaw: 0, pitch: 0 };
     var center = { yaw: 0, pitch: 0, roll: 0 };
     var lastT = 0;
+    var gateDb = 0;       // 口が開くしきい値の上乗せ（dB）。+ で鈍く、- で敏感。0 は今までどおり
 
     var HOLD = 80;        // 口の形を保つ最短の時間（ms）
     var MAX_OPEN = 260;   // 開きっぱなしにしない（ぱたぱた感）
@@ -86,7 +94,7 @@
       // 周りの雑音の大きさを覚えておく（下がるのは速く、上がるのはゆっくり）
       if (db < floorDb) floorDb = db; else floorDb += (db - floorDb) * 0.004;
       floorDb = clampN(floorDb, -80, -42);
-      var thrHalf = Math.max(-50, floorDb + 12);
+      var thrHalf = Math.max(-50, floorDb + 12) + gateDb;
       var thrOpen = thrHalf + 8;
       var hasHalf = !!(art && art.mouthHalf);
       var target;
@@ -145,6 +153,8 @@
         return { mouth: mouth, eyesShut: eyesShut, roll: pose.roll, yaw: pose.yaw, pitch: pose.pitch };
       },
       setArt: function (a) { art = a || null; },
+      // 口の反応: しきい値を db だけ上げる（+ で鈍く）
+      setMouthGate: function (db) { gateDb = isFinite(db) ? db : 0; },
       // f = { found, blink(0〜1), yaw, pitch, roll（ラジアン） }
       setFace: function (f) { face = f; faceAt = performance.now(); },
       state: function () { return { mouth: mouth, eyesShut: eyesShut, pose: pose, floorDb: floorDb, faceFresh: !!(face && face.found && performance.now() - faceAt < FACE_STALE) }; },
@@ -171,7 +181,36 @@
     };
   }
 
+  // 今の口・目で重ねる部品（地の絵・口・閉じた目）。部品はどれも地の絵と同じ大きさの重ね絵
+  function layersOf(art, st) {
+    var a = [art.base];
+    if (st.mouth === 2 && art.mouthOpen) a.push(art.mouthOpen);
+    else if (st.mouth === 1 && art.mouthHalf) a.push(art.mouthHalf);
+    else if (st.mouth === 1 && art.mouthOpen) a.push(art.mouthOpen);
+    if (st.eyesShut && art.eyesClosed) a.push(art.eyesClosed);
+    return a;
+  }
+
+  // 地の絵で、何か描いてある横の範囲（0〜1）。透明な左右の余白は細切りにしない。絵ごとに1回だけ調べる
+  function colRange(art) {
+    if (art._cols) return art._cols;
+    var r = [0, 1];
+    try {
+      var cw = 160, ch = 90;
+      var c = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(cw, ch) : document.createElement('canvas');
+      c.width = cw; c.height = ch;
+      var g = c.getContext('2d');
+      g.drawImage(art.base, 0, 0, cw, ch);
+      var d = g.getImageData(0, 0, cw, ch).data, lo = cw, hi = -1;
+      for (var x = 0; x < cw; x++) for (var y = 0; y < ch; y++) if (d[(y * cw + x) * 4 + 3] > 4) { if (x < lo) lo = x; hi = x; break; }
+      if (hi >= lo) r = [Math.max(0, (lo - 2) / cw), Math.min(1, (hi + 3) / cw)];
+    } catch (e) { /* 全部を細切りにする */ }
+    art._cols = r;
+    return r;
+  }
+
   // 背景を抜いた絵を、枠（x, y, w, h。w:h = 16:9）に描く。st = { mouth, eyesShut, roll, yaw, pitch }
+  // 顔を左右に向けると、絵を縦の細切りにして台形にゆがめる（向きと反対の端を大きく、幅を少し縮め、顔の中ほどを多めにずらす）
   function drawPose(g, art, st, x, y, w, h) {
     if (!art || !art.base) return;
     var k = w / W;
@@ -179,15 +218,36 @@
     var rot = clampN(-(st.roll || 0) * 0.6, -0.14, 0.14);
     var dx = clampN((st.yaw || 0) * 110, -40, 40) * k;
     var dy = clampN((st.pitch || 0) * 90, -28, 28) * k;
+    var t = clampN((st.yaw || 0) / YAW_FULL, -1, 1);   // + は絵が右へずれる向き（dx と同じ）
     g.save();
     g.translate(x + w / 2 + dx, y + h / 2 + dy);
     g.rotate(rot);
     g.translate(-w / 2, -h / 2);
-    g.drawImage(art.base, 0, 0, w, h);
-    if (st.mouth === 2 && art.mouthOpen) g.drawImage(art.mouthOpen, 0, 0, w, h);
-    else if (st.mouth === 1 && art.mouthHalf) g.drawImage(art.mouthHalf, 0, 0, w, h);
-    else if (st.mouth === 1 && art.mouthOpen) g.drawImage(art.mouthOpen, 0, 0, w, h);
-    if (st.eyesShut && art.eyesClosed) g.drawImage(art.eyesClosed, 0, 0, w, h);
+    var layers = layersOf(art, st), j;
+    if (Math.abs(t) < 0.02) {
+      for (j = 0; j < layers.length; j++) g.drawImage(layers[j], 0, 0, w, h);
+      g.restore();
+      return;
+    }
+    var n = Math.max(24, Math.min(128, Math.round(w / STRIP_PX)));
+    var cr = colRange(art), i0 = Math.floor(cr[0] * n), i1 = Math.ceil(cr[1] * n);
+    var squeeze = 1 - TURN_SQUEEZE * Math.abs(t);
+    var par = TURN_PARALLAX * t * w;
+    // 横の位置 u（0〜1）が、描く先のどこに来るか（中ほどほど多くずらす）
+    var X = function (u) { return w / 2 + (u - 0.5) * w * squeeze + par * Math.sin(Math.PI * u); };
+    // 部品ごとに、同じ細切りで描く（下書きの絵を作らず、部品の絵から直に描く）
+    for (j = 0; j < layers.length; j++) {
+      var img = layers[j], iw = img.width, ih = img.height;
+      var ss = iw / n, ov = iw / w;   // 1本の幅と、描く先 1px ぶん（絵の画素で）
+      for (var i = i0; i < i1; i++) {
+        var u0 = i / n, u1 = (i + 1) / n;
+        var x0 = X(u0), x1 = X(u1);
+        var dh = h * (1 + TURN_SCALE * t * (1 - (u0 + u1)));   // 左端で 1+S·t 倍、右端で 1−S·t 倍
+        // 継ぎ目が出ないよう 1px 重ねる（最後の1本は端まで）
+        var srcW = Math.min(ss + ov, iw - i * ss);
+        g.drawImage(img, i * ss, 0, srcW, ih, x0, h - dh, (x1 - x0) * srcW / ss, dh);   // 足もとをそろえ、上へ伸び縮みさせる
+      }
+    }
     g.restore();
   }
 
