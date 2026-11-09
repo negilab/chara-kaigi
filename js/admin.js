@@ -6,6 +6,12 @@ import { getDb, isLocalMode } from './db.js';
 const app = $('#app');
 let db = null, key = '', saved = null, work = null, sel = 'sennin', editor = null;
 let ac = null, mic = null, engine = null;
+// 録音して再生: 録った地声（加工する前）をメモリにだけ持ち、再生のたびに今の設定の声で聞かせる。どこにも送らない・保存しない
+const REC_MAX = 10;   // 秒
+let rec = null;       // 録音中 { ctx, stream, node, chunks, len, t0, timer }
+let recBuf = null;    // 録った地声（AudioBuffer）
+let play = null;      // 再生中 { ctx, engine, src, echo }
+let echoPlay = false; // 再生に「エコー」ボタンの響きをかける
 
 function top(right = '') {
   return `<div class="top"><div class="brand"><div class="logo">${icon('bubble')}</div>キャラ会議<span class="badge">管理</span></div>
@@ -24,6 +30,9 @@ function toast(msg) {
 
 function showLogin(err) {
   stopListen();
+  stopRec(true);
+  stopPlay();
+  recBuf = null;
   key = '';
   app.innerHTML = top() + `
   <form class="card lg" id="f" autocomplete="off">
@@ -69,7 +78,16 @@ function showMain() {
     </div>
     <div class="card main">
       <div id="ve"></div>
+      <div class="ebx"><div class="lbl">エコーボタンの響き（会議の「エコー」ボタン。全キャラ共通）</div>
+        <div class="box" id="ebx">${E.ECHO_BUTTON.map((d) => `
+          <label class="fxd-r"><span class="fxd-l">${esc(d.label)}</span>
+            <input type="range" data-ek="${d.k}" min="${d.min}" max="${d.max}" step="${d.step}" aria-label="エコーボタンの${esc(d.label)}">
+            <b class="fxd-v" data-ev="${d.k}"></b></label>`).join('')}
+          <div class="ebx-t"><button type="button" class="sw" id="b-echoplay" role="switch" aria-checked="false" aria-label="再生にエコーをかける"></button><span>「再生」にエコーをかける</span></div>
+        </div></div>
       <div class="foot"><div class="note">${icon('info')}保存すると、次の会議から全員の初めの声になります</div>
+        <button type="button" class="btn" id="b-rec">${icon('mic')}録音</button>
+        <button type="button" class="btn" id="b-play" ${recBuf ? '' : 'disabled'}>${icon('play')}再生</button>
         <button type="button" class="btn" id="b-listen">${icon('play')}試しに聞く</button>
         <button type="button" class="btn pri" id="b-save" style="width:140px">保存</button></div>
     </div>
@@ -77,8 +95,9 @@ function showMain() {
   editor = voiceEditor($('#ve'), work[sel], (v) => {
     work[sel] = v;
     if (engine) engine.apply(v);
+    if (play) play.engine.apply(v);
     paintList();
-  });
+  }, { detail: true });
   $('#list').addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-ch]');
     if (!b) return;
@@ -90,7 +109,36 @@ function showMain() {
   });
   $('#b-save').addEventListener('click', save);
   $('#b-listen').addEventListener('click', () => (engine ? stopListen() : startListen()));
+  $('#b-rec').addEventListener('click', () => (rec ? stopRec() : startRec()));
+  $('#b-play').addEventListener('click', () => (play ? stopPlay() : startPlay()));
+  $('#ebx').addEventListener('input', (ev) => {
+    const k = ev.target.dataset.ek;
+    if (!k) return;
+    work._echoButton = E.normalizeEchoButton(Object.assign({}, work._echoButton, { [k]: Number(ev.target.value) }));
+    if (play && play.echo) play.echo.set(work._echoButton);
+    paintEcho();
+  });
+  $('#b-echoplay').addEventListener('click', () => {
+    echoPlay = !echoPlay;
+    if (play && play.echo) play.echo.hold(echoPlay);
+    paintEcho();
+  });
+  paintEcho();
   select(sel);
+}
+
+function paintEcho() {
+  const v = E.normalizeEchoButton(work._echoButton);
+  E.ECHO_BUTTON.forEach((d) => {
+    const inp = $(`#ebx input[data-ek="${d.k}"]`);
+    if (!inp) return;
+    inp.value = v[d.k];
+    inp.style.setProperty('--p', ((v[d.k] - d.min) / (d.max - d.min)) * 100 + '%');
+    const dec = d.step >= 1 ? 0 : d.step >= 0.1 ? 1 : 2;
+    $(`#ebx [data-ev="${d.k}"]`).textContent = `${Number(v[d.k].toFixed(dec))} ${d.unit}`;
+  });
+  const sw = $('#b-echoplay');
+  if (sw) { sw.classList.toggle('on', echoPlay); sw.setAttribute('aria-checked', echoPlay ? 'true' : 'false'); }
 }
 
 function select(id) {
@@ -100,6 +148,7 @@ function select(id) {
   const top = $('.ve-top') || (() => { const d = document.createElement('div'); d.className = 've-top'; $('.ve-c1').prepend(d); return d; })();
   top.innerHTML = `<div class="stagepv"><img src="characters/${id}/base.png" alt="${esc(c.name)}"></div><div class="nm">${esc(c.name)}</div>`;
   if (engine) engine.apply(work[id]);
+  if (play) play.engine.apply(work[id]);
   paintList();
 }
 
@@ -129,6 +178,8 @@ async function save() {
 }
 
 async function startListen() {
+  stopRec();
+  stopPlay();
   try {
     mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
   } catch (e) {
@@ -149,6 +200,115 @@ function stopListen() {
   if (ac) { ac.close().catch(() => {}); ac = null; }
   const b = $('#b-listen');
   if (b) b.innerHTML = `${icon('play')}試しに聞く`;
+}
+
+// ---- 録音 → 再生 ----
+async function startRec() {
+  stopListen();
+  stopPlay();
+  // 音の場は押した直後に作る（iPhone は、押したときに作らないと音が出ないことがある）
+  const ctx = new AudioContext();
+  let stream;
+  try {
+    // 会議と同じ条件でマイクを開く（audio.js と同じ）
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  } catch (e) {
+    ctx.close().catch(() => {});
+    toast('マイクを使えません。このページにマイクを許可してください');
+    return;
+  }
+  try { await ctx.resume(); } catch (e) { /* なし */ }
+  const srcNode = ctx.createMediaStreamSource(stream);
+  const node = ctx.createScriptProcessor(4096, 1, 1);
+  const mute = ctx.createGain();
+  mute.gain.value = 0;   // 録るだけで、スピーカーには出さない
+  const r = rec = { ctx, stream, node, chunks: [], len: 0, t0: performance.now(), timer: 0 };
+  const maxLen = Math.floor(ctx.sampleRate * REC_MAX);
+  node.onaudioprocess = (ev) => {
+    if (rec !== r) return;
+    const d = ev.inputBuffer.getChannelData(0);
+    const n = Math.min(d.length, maxLen - r.len);
+    if (n > 0) { r.chunks.push(new Float32Array(d.subarray(0, n))); r.len += n; }
+    if (r.len >= maxLen) setTimeout(() => { if (rec === r) stopRec(); }, 0);
+  };
+  srcNode.connect(node); node.connect(mute); mute.connect(ctx.destination);
+  r.timer = setInterval(paintRec, 200);
+  paintRec();
+}
+function paintRec() {
+  const b = $('#b-rec');
+  if (!b) return;
+  if (rec) {
+    const sec = Math.min(REC_MAX, Math.floor((performance.now() - rec.t0) / 1000));
+    b.innerHTML = `<span class="recdot"></span>止める（${sec}秒／${REC_MAX}秒）`;
+    b.classList.add('recon');
+  } else {
+    b.innerHTML = `${icon('mic')}録音`;
+    b.classList.remove('recon');
+  }
+  const p = $('#b-play');
+  if (p) {
+    p.disabled = !recBuf || !!rec;
+    p.innerHTML = play ? `${icon('stop')}止める` : `${icon('play')}再生`;
+  }
+}
+// discard = true のときは、録った音を残さない（画面を閉じるとき）
+function stopRec(discard) {
+  const r = rec;
+  if (!r) return;
+  rec = null;
+  clearInterval(r.timer);
+  r.node.onaudioprocess = null;
+  try { r.node.disconnect(); } catch (e) { /* なし */ }
+  r.stream.getTracks().forEach((t) => t.stop());
+  if (!discard && r.len > r.ctx.sampleRate * 0.3) {
+    const buf = r.ctx.createBuffer(1, r.len, r.ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    let o = 0;
+    r.chunks.forEach((c) => { d.set(c, o); o += c.length; });
+    recBuf = buf;
+    toast(`録音しました（${(r.len / r.ctx.sampleRate).toFixed(1)}秒）。「再生」で、いまの設定の声で聞けます`);
+  } else if (!discard) {
+    toast('録音が短すぎました。もう一度、話しながら録音してください');
+  }
+  r.ctx.close().catch(() => {});
+  paintRec();
+}
+async function startPlay() {
+  if (!recBuf) return;
+  stopListen();
+  stopRec();
+  stopPlay();
+  const ctx = new AudioContext();
+  try { await ctx.resume(); } catch (e) { /* なし */ }
+  const eng = E.create(ctx);
+  eng.apply(cleanVoice(work[sel]));
+  eng.output.connect(ctx.destination);
+  // 「エコー」ボタンの響き（会議と同じ部品）。スイッチが入っているあいだだけ重ねる
+  const echo = E.createHoldEcho(ctx);
+  echo.set(work._echoButton);
+  eng.output.connect(echo.input);
+  echo.output.connect(ctx.destination);
+  echo.hold(echoPlay);
+  const src = ctx.createBufferSource();
+  src.buffer = recBuf;
+  src.connect(eng.input);
+  const p = play = { ctx, engine: eng, src, echo };
+  // 加工の効果（エコーなど）の余韻が切れないよう、少し待ってから止める
+  src.onended = () => setTimeout(() => { if (play === p) stopPlay(); }, 1200);
+  src.start(ctx.currentTime + 0.05);
+  paintRec();
+}
+function stopPlay() {
+  const p = play;
+  if (!p) return;
+  play = null;
+  p.src.onended = null;
+  try { p.src.stop(); } catch (e) { /* なし */ }
+  p.engine.destroy();
+  p.echo.destroy();
+  p.ctx.close().catch(() => {});
+  paintRec();
 }
 
 showLogin();

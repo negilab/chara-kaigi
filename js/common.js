@@ -38,10 +38,12 @@ export function cleanVoice(v) {
 }
 
 // 整えた6人分の初期値（足りない分は既定）
+// _echoButton: 会議の「エコー」ボタンの響き（全キャラ共通。無ければ既定の響き）。/defaults/v の中に一緒に保存する
 export function cleanDefaults(v) {
   const base = builtinDefaults();
   const out = {};
   CHAR_IDS.forEach((id) => { out[id] = cleanVoice((v && v[id]) || base[id]); });
+  out._echoButton = E.normalizeEchoButton(v && v._echoButton);
   return out;
 }
 
@@ -82,6 +84,7 @@ export const ICONS = {
   lock: '<rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>',
   play: '<path d="M8 5.5v13l10.5-6.5z"/>',
   stop: '<rect x="6.5" y="6.5" width="11" height="11" rx="2"/>',
+  echo: '<path d="M4 12h2.5M9 8.5v7M13 6v12M17 9v6M20.5 11v2"/>',
   focus: '<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="12" cy="11" r="3.2"/><path d="M7.5 18c.9-2 2.6-3 4.5-3s3.6 1 4.5 3"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>'
 };
@@ -117,8 +120,14 @@ export function download(blob, filename) {
 
 // 声の調整の部品（管理画面と、会議の「声を調整」で同じものを使う）
 // root に描き、値が変わるたびに onChange(voice) を呼ぶ
-export function voiceEditor(root, voice, onChange) {
+// opts.detail = true のときだけ、各エフェクトに「詳しく」を出す（管理画面）。会議では出さないが、詳しい値はそのまま残る
+export function voiceEditor(root, voice, onChange, opts = {}) {
   let v = cleanVoice(voice);
+  const detail = !!opts.detail;
+  const dec = (step) => (step >= 1 ? 0 : step >= 0.1 ? 1 : 2);
+  const fmt = (x, d) => `${Number(x.toFixed(dec(d.step)))}${d.unit ? ` ${d.unit}` : ''}`;
+  // 詳しい値: 保存されていればそれ、無ければ今までどおりの値（強さから決まる）
+  const dval = (e, d) => (d.k === 'amt' ? e.amt : typeof e[d.k] === 'number' ? e[d.k] : d.def(e.amt / 100));
   const pct = (x, lo, hi) => ((x - lo) / (hi - lo)) * 100;
   const sgn = (x) => (x > 0 ? `+${x}` : `${x}`);
   root.innerHTML = `
@@ -137,7 +146,13 @@ export function voiceEditor(root, voice, onChange) {
             <button type="button" class="sw" role="switch" aria-label="${esc(f.label)}"></button>
             <span class="n">${esc(f.label)}</span>
             <input type="range" class="s2" min="0" max="100" step="1" aria-label="${esc(f.label)}の強さ">
-          </div>`).join('')}</div>
+            ${detail ? `<button type="button" class="fxd-t" data-fxt="${f.key}" aria-expanded="false" aria-controls="fxd-${f.key}">詳しく</button>` : ''}
+          </div>${detail ? `
+          <div class="fxd" id="fxd-${f.key}" data-fxd="${f.key}" hidden>${E.FX_DETAIL[f.key].map((d) => `
+            <label class="fxd-r"><span class="fxd-l">${esc(d.label)}</span>
+              <input type="range" data-dk="${d.k}" min="${d.min}" max="${d.max}" step="${d.step}" aria-label="${esc(f.label)}の${esc(d.label)}">
+              <b class="fxd-v" data-dv="${d.k}"></b></label>`).join('')}
+          </div>` : ''}`).join('')}</div>
       </div>
     </div>`;
   function paint() {
@@ -157,17 +172,39 @@ export function voiceEditor(root, voice, onChange) {
       const r = row.querySelector('input');
       r.value = e.amt;
       r.style.setProperty('--p', e.amt + '%');
+      const box = detail && root.querySelector(`[data-fxd="${f.key}"]`);
+      if (!box) return;
+      box.classList.toggle('off', !e.on);
+      E.FX_DETAIL[f.key].forEach((d) => {
+        const x = dval(e, d);
+        const inp = box.querySelector(`input[data-dk="${d.k}"]`);
+        inp.value = x;
+        inp.style.setProperty('--p', pct(x, d.min, d.max) + '%');
+        box.querySelector(`[data-dv="${d.k}"]`).textContent = fmt(x, d);
+      });
     });
   }
   root.addEventListener('input', (ev) => {
     const t = ev.target;
     if (t.dataset.k) v[t.dataset.k] = Number(t.value);
+    if (t.dataset.dk) {
+      const e = v.fx[t.closest('[data-fxd]').dataset.fxd];
+      if (t.dataset.dk === 'amt') e.amt = Number(t.value); else e[t.dataset.dk] = Number(t.value);
+    }
     const row = t.closest('[data-fx]');
     if (row && t.tagName === 'INPUT') v.fx[row.dataset.fx].amt = Number(t.value);
     paint();
     onChange(cleanVoice(v));
   });
   root.addEventListener('click', (ev) => {
+    const tg = ev.target.closest('.fxd-t');
+    if (tg) {
+      const box = root.querySelector(`[data-fxd="${tg.dataset.fxt}"]`);
+      box.hidden = !box.hidden;
+      tg.setAttribute('aria-expanded', box.hidden ? 'false' : 'true');
+      tg.textContent = box.hidden ? '詳しく' : '閉じる';
+      return;
+    }
     const sw = ev.target.closest('.sw');
     if (!sw) return;
     const key = sw.closest('[data-fx]').dataset.fx;

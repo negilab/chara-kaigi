@@ -8,7 +8,7 @@
   if (root.VoiceChangerEngine) return;
 
   var FX_LIST = [
-    { key: 'echo', label: 'エコー' },
+    { key: 'echo', label: 'ディレイ' },   // 保存の名前は echo のまま（前に保存した値がそのまま使える）
     { key: 'reverb', label: 'リバーブ' },
     { key: 'distortion', label: 'ディストーション' },
     { key: 'phaser', label: 'フェイザー' },
@@ -18,6 +18,89 @@
     { key: 'robot', label: 'ロボット' },
     { key: 'radio', label: '無線・電話' }
   ];
+  // 各エフェクトの詳しい設定（管理画面の「詳しく」）。
+  // k: 保存する名前（'amt' は、行のつまみと同じ「強さ」）。def(a): 値が無いときの今までどおりの値（a = amt/100）。
+  // 値が保存されていなければ、音は今までとまったく同じになる。
+  function r1(v) { return Math.round(v * 10) / 10; }
+  var AMT = { k: 'amt', label: '強さ', min: 0, max: 100, step: 1, unit: '' };
+  var FX_DETAIL = {
+    echo: [
+      { k: 'time', label: '間隔', min: 60, max: 1000, step: 10, unit: 'ms', def: function (a) { return Math.round((0.12 + 0.33 * a) * 1000); } },
+      { k: 'repeats', label: '返りの回数', min: 1, max: 12, step: 0.5, unit: '回', def: function (a) { return r1(-2 / Math.log10(0.25 + 0.4 * a)); } },
+      AMT
+    ],
+    reverb: [
+      { k: 'size', label: '響く広さ', min: 0.5, max: 5, step: 0.1, unit: '秒', def: function () { return 2.2; } },
+      AMT
+    ],
+    distortion: [
+      { k: 'drive', label: '歪み', min: 1, max: 40, step: 0.5, unit: '倍', def: function (a) { return r1(1 + 30 * a); } },
+      { k: 'vol', label: '音量', min: 5, max: 150, step: 1, unit: '%', def: function (a) { return Math.round(80 / (1 + 1.5 * a)); } }
+    ],
+    phaser: [
+      { k: 'speed', label: '速さ', min: 0.05, max: 3, step: 0.05, unit: 'Hz', def: function (a) { return Math.round((0.2 + 0.8 * a) * 100) / 100; } },
+      { k: 'depth', label: '深さ', min: 100, max: 1500, step: 10, unit: 'Hz', def: function (a) { return Math.round(300 + 600 * a); } }
+    ],
+    flanger: [
+      { k: 'speed', label: '速さ', min: 0.05, max: 3, step: 0.05, unit: 'Hz', def: function (a) { return Math.round((0.15 + 0.5 * a) * 100) / 100; } },
+      { k: 'depth', label: '深さ', min: 0.2, max: 5, step: 0.1, unit: 'ms', def: function (a) { return r1((0.001 + 0.0025 * a) * 1000); } },
+      { k: 'fb', label: '強さ', min: 0, max: 95, step: 1, unit: '%', def: function (a) { return Math.round((0.3 + 0.5 * a) * 100); } }
+    ],
+    chorus: [
+      { k: 'speed', label: '速さ', min: 0.2, max: 4, step: 0.1, unit: 'Hz', def: function () { return 0.8; } },
+      { k: 'depth', label: '深さ', min: 0.5, max: 8, step: 0.1, unit: 'ms', def: function (a) { return r1((0.001 + 0.004 * a) * 1000); } },
+      AMT
+    ],
+    tremolo: [
+      { k: 'speed', label: '速さ', min: 1, max: 15, step: 0.5, unit: 'Hz', def: function (a) { return r1(3 + 6 * a); } },
+      { k: 'depth', label: '深さ', min: 0, max: 100, step: 1, unit: '%', def: function (a) { return Math.round((0.3 + 0.7 * a) * 100); } }
+    ],
+    robot: [
+      { k: 'pitch', label: '声の高さ', min: 60, max: 300, step: 5, unit: 'Hz', def: function () { return 110; } },
+      AMT
+    ],
+    radio: [
+      { k: 'narrow', label: '音の細さ', min: 0, max: 100, step: 1, unit: '', def: function (a) { return Math.round(a * 100); } },
+      { k: 'grit', label: 'ざらつき', min: 1, max: 10, step: 0.1, unit: '倍', def: function (a) { return r1(1 + 4 * a); } },
+      { k: 'mix', label: '強さ', min: 0, max: 100, step: 1, unit: '%', def: function () { return 100; } }
+    ]
+  };
+  // 会議の「エコー」ボタン（押しているあいだだけ、ディレイ＋リバーブを重ねる）の響き。全キャラ共通
+  var ECHO_BUTTON = [
+    { k: 'time', label: 'ディレイの間隔', min: 60, max: 1000, step: 10, unit: 'ms', def: 280 },
+    { k: 'repeats', label: '返りの回数', min: 1, max: 12, step: 0.5, unit: '回', def: 5 },
+    { k: 'size', label: 'リバーブの広さ', min: 0.5, max: 5, step: 0.1, unit: '秒', def: 2.6 },
+    { k: 'mix', label: '強さ', min: 0, max: 100, step: 1, unit: '%', def: 60 }
+  ];
+  // 範囲に収める。無い値（前のデータ）は既定の値
+  function normalizeEchoButton(o) {
+    o = o && typeof o === 'object' ? o : {};
+    var out = {};
+    ECHO_BUTTON.forEach(function (d) {
+      var v = Number(o[d.k]);
+      if (o[d.k] == null || o[d.k] === '' || !isFinite(v)) v = d.def;
+      v = Math.min(d.max, Math.max(d.min, v));
+      out[d.k] = Math.round(Math.round(v / d.step) * d.step * 1000) / 1000;
+    });
+    return out;
+  }
+
+  // 保存されている詳しい値を範囲に収める（知らない名前は捨てる）
+  function cleanDetail(key, e) {
+    var out = {};
+    (FX_DETAIL[key] || []).forEach(function (d) {
+      if (d.k === 'amt' || e[d.k] == null || e[d.k] === '') return;
+      var v = Number(e[d.k]);
+      if (!isFinite(v)) return;
+      v = Math.min(d.max, Math.max(d.min, v));
+      out[d.k] = Math.round(v / d.step) * d.step;
+      out[d.k] = Math.round(out[d.k] * 1000) / 1000;
+    });
+    return out;
+  }
+  // 詳しい値があればそれ、無ければ今までどおりの式
+  function dv(e, k, fallback) { return e && typeof e[k] === 'number' && isFinite(e[k]) ? e[k] : fallback; }
+
   // キャラの絵（extension/characters/<id>/ に部品がある）
   var ART_LIST = [
     { id: 'sennin', label: '仙人' },
@@ -68,7 +151,7 @@
     FX_LIST.forEach(function (f) {
       var e = src[f.key];
       if (e && typeof e === 'object') {
-        out.fx[f.key] = { on: e.on === true, amt: Math.round(clamp(e.amt == null ? 50 : e.amt, 0, 100)) };
+        out.fx[f.key] = Object.assign({ on: e.on === true, amt: Math.round(clamp(e.amt == null ? 50 : e.amt, 0, 100)) }, cleanDetail(f.key, e));
       }
     });
     return out;
@@ -221,12 +304,14 @@
       lp.type = 'lowpass'; lp.frequency.value = 3000;
       st.input.connect(d); d.connect(lp); lp.connect(fb); fb.connect(d); d.connect(st.wet);
       fb.gain.value = 0;
-      st.set = function (on, k) {
+      st.set = function (on, k, e) {
         if (!on) { setP(ctx, fb.gain, 0); st.mix(1, 0); return; }
-        setP(ctx, d.delayTime, 0.12 + 0.33 * k);
-        setP(ctx, fb.gain, 0.25 + 0.4 * k);
+        setP(ctx, d.delayTime, dv(e, 'time', null) != null ? e.time / 1000 : 0.12 + 0.33 * k);
+        // 返りの回数 N: N 回返ったところで 1/100（-40dB）まで小さくなる戻りの量
+        setP(ctx, fb.gain, dv(e, 'repeats', null) != null ? Math.min(0.9, Math.pow(10, -2 / e.repeats)) : 0.25 + 0.4 * k);
         st.mix(1, 0.35 + 0.45 * k);
       };
+      st.nodes = { delayTime: d.delayTime, feedback: fb.gain, wet: st.wet.gain };
       fx.echo = st;
     })();
 
@@ -237,10 +322,14 @@
       cv.normalize = true;
       cv.buffer = makeImpulse(ctx, 2.2, 3);
       st.input.connect(cv); cv.connect(st.wet);
-      st.set = function (on, k) {
+      var size = 2.2;
+      st.set = function (on, k, e) {
         if (!on) { st.mix(1, 0); return; }
+        var want = dv(e, 'size', 2.2);
+        if (want !== size) { size = want; cv.buffer = makeImpulse(ctx, size, 3); }
         st.mix(1, 0.15 + 0.85 * k);
       };
+      st.nodes = { wet: st.wet.gain, impulseSeconds: { get value() { return cv.buffer ? cv.buffer.duration : 0; } } };
       fx.reverb = st;
     })();
 
@@ -250,12 +339,13 @@
       var pre = ctx.createGain(), sh = ctx.createWaveShaper(), post = ctx.createGain();
       sh.curve = softCurve(2.5); sh.oversample = '4x';
       st.input.connect(pre); pre.connect(sh); sh.connect(post); post.connect(st.wet);
-      st.set = function (on, k) {
+      st.set = function (on, k, e) {
         if (!on) { st.mix(1, 0); return; }
-        setP(ctx, pre.gain, 1 + 30 * k);
-        setP(ctx, post.gain, 0.8 / (1 + 1.5 * k));
+        setP(ctx, pre.gain, dv(e, 'drive', 1 + 30 * k));
+        setP(ctx, post.gain, dv(e, 'vol', null) != null ? e.vol / 100 : 0.8 / (1 + 1.5 * k));
         st.mix(0, 1);
       };
+      st.nodes = { drive: pre.gain, volume: post.gain };
       fx.distortion = st;
     })();
 
@@ -271,12 +361,13 @@
         prev.connect(ap); prev = ap;
       }
       prev.connect(st.wet);
-      st.set = function (on, k) {
+      st.set = function (on, k, e) {
         if (!on) { st.mix(1, 0); return; }
-        setP(ctx, lfo.osc.frequency, 0.2 + 0.8 * k);
-        setP(ctx, lfo.gain.gain, 300 + 600 * k);
+        setP(ctx, lfo.osc.frequency, dv(e, 'speed', 0.2 + 0.8 * k));
+        setP(ctx, lfo.gain.gain, dv(e, 'depth', 300 + 600 * k));
         st.mix(0.7, 0.7);
       };
+      st.nodes = { speed: lfo.osc.frequency, depth: lfo.gain.gain };
       fx.phaser = st;
     })();
 
@@ -289,13 +380,14 @@
       lfo.gain.connect(d.delayTime);
       st.input.connect(d); d.connect(fb); fb.connect(d); d.connect(st.wet);
       fb.gain.value = 0;
-      st.set = function (on, k) {
+      st.set = function (on, k, e) {
         if (!on) { setP(ctx, fb.gain, 0); st.mix(1, 0); return; }
-        setP(ctx, fb.gain, 0.3 + 0.5 * k);
-        setP(ctx, lfo.gain.gain, 0.001 + 0.0025 * k);
-        setP(ctx, lfo.osc.frequency, 0.15 + 0.5 * k);
+        setP(ctx, fb.gain, dv(e, 'fb', null) != null ? e.fb / 100 : 0.3 + 0.5 * k);
+        setP(ctx, lfo.gain.gain, dv(e, 'depth', null) != null ? e.depth / 1000 : 0.001 + 0.0025 * k);
+        setP(ctx, lfo.osc.frequency, dv(e, 'speed', 0.15 + 0.5 * k));
         st.mix(0.7, 0.7);
       };
+      st.nodes = { feedback: fb.gain, depth: lfo.gain.gain, speed: lfo.osc.frequency };
       fx.flanger = st;
     })();
 
@@ -313,11 +405,15 @@
         lfos.push(lfo);
       });
       sum.connect(st.wet);
-      st.set = function (on, k) {
+      var BASE_HZ = [0.8, 1.1, 1.4];
+      st.set = function (on, k, e) {
         if (!on) { st.mix(1, 0); return; }
-        lfos.forEach(function (l) { setP(ctx, l.gain.gain, 0.001 + 0.004 * k); });
+        var depth = dv(e, 'depth', null) != null ? e.depth / 1000 : 0.001 + 0.004 * k;
+        var sp = dv(e, 'speed', 0.8) / 0.8;   // 3つの揺れの速さを、同じ割合で変える
+        lfos.forEach(function (l, i) { setP(ctx, l.gain.gain, depth); setP(ctx, l.osc.frequency, BASE_HZ[i] * sp); });
         st.mix(0.8, 0.4 + 0.5 * k);
       };
+      st.nodes = { depth: lfos[0].gain.gain, speed: lfos[0].osc.frequency, wet: st.wet.gain };
       fx.chorus = st;
     })();
 
@@ -328,14 +424,15 @@
       var lfo = makeLfo(ctx, 5, 0, starters);
       lfo.gain.connect(amp.gain);
       st.input.connect(amp); amp.connect(st.wet);
-      st.set = function (on, k) {
+      st.set = function (on, k, e) {
         if (!on) { setP(ctx, lfo.gain.gain, 0); st.mix(1, 0); return; }
-        var depth = 0.3 + 0.7 * k;
+        var depth = dv(e, 'depth', null) != null ? e.depth / 100 : 0.3 + 0.7 * k;
         setP(ctx, amp.gain, 1 - depth / 2);
         setP(ctx, lfo.gain.gain, depth / 2);
-        setP(ctx, lfo.osc.frequency, 3 + 6 * k);
+        setP(ctx, lfo.osc.frequency, dv(e, 'speed', 3 + 6 * k));
         st.mix(0, 1);
       };
+      st.nodes = { depth: lfo.gain.gain, speed: lfo.osc.frequency };
       fx.tremolo = st;
     })();
 
@@ -352,8 +449,9 @@
       lfo.gain.connect(ring.gain);
       var post = ctx.createGain(); post.gain.value = 0.6;
       ring.connect(post); post.connect(st.wet);
-      st.set = function (on, k) {
+      st.set = function (on, k, e) {
         if (!on) { setP(ctx, fb.gain, 0); st.mix(1, 0); return; }
+        setP(ctx, d.delayTime, 1 / dv(e, 'pitch', 110));   // 金属っぽい音の高さ（今までは 110Hz で決まり）
         var m = 0.5 + 0.5 * k;
         setP(ctx, fb.gain, 0.3 + 0.5 * k);
         setP(ctx, ring.gain, 1 - m);
@@ -361,6 +459,7 @@
         setP(ctx, lfo.osc.frequency, 30 + 40 * k);
         st.mix(0, 1);
       };
+      st.nodes = { combDelay: d.delayTime, feedback: fb.gain, ringFreq: lfo.osc.frequency };
       fx.robot = st;
     })();
 
@@ -374,18 +473,59 @@
       var pre = ctx.createGain(), sh = ctx.createWaveShaper(), post = ctx.createGain();
       sh.curve = softCurve(2); sh.oversample = '2x';
       st.input.connect(hp); hp.connect(lp); lp.connect(pk); pk.connect(pre); pre.connect(sh); sh.connect(post); post.connect(st.wet);
-      st.set = function (on, k) {
+      st.set = function (on, k, e) {
         if (!on) { st.mix(1, 0); return; }
-        setP(ctx, hp.frequency, 300 + 500 * k);
-        setP(ctx, lp.frequency, 3400 - 1400 * k);
-        setP(ctx, pre.gain, 1 + 4 * k);
+        var n = dv(e, 'narrow', null) != null ? e.narrow / 100 : k;   // 音の細さ（今までは強さと同じ）
+        setP(ctx, hp.frequency, 300 + 500 * n);
+        setP(ctx, lp.frequency, 3400 - 1400 * n);
+        setP(ctx, pre.gain, dv(e, 'grit', 1 + 4 * k));
         setP(ctx, post.gain, 0.9);
-        st.mix(0, 1);
+        var mx = dv(e, 'mix', 100) / 100;
+        st.mix(1 - mx, mx);
       };
+      st.nodes = { highpass: hp.frequency, lowpass: lp.frequency, grit: pre.gain, dry: st.dry.gain, wet: st.wet.gain };
       fx.radio = st;
     })();
 
     return fx;
+  }
+
+  // 「エコー」ボタンの響き。input に加工後の声を入れ、output の音（響きだけ）を声に足す。
+  // hold(true) のあいだだけ響きに声を流す。離したあとは、流すのをやめるだけなので、余韻は自然に消える。
+  function createHoldEcho(ctx) {
+    var input = ctx.createGain(), gate = ctx.createGain(), output = ctx.createGain();
+    gate.gain.value = 0;
+    var d = ctx.createDelay(1.5), fb = ctx.createGain(), lp = ctx.createBiquadFilter(), dWet = ctx.createGain();
+    lp.type = 'lowpass'; lp.frequency.value = 3500;
+    var cv = ctx.createConvolver(), rWet = ctx.createGain();
+    cv.normalize = true;
+    var size = 0;
+    input.connect(gate);
+    gate.connect(d); d.connect(lp); lp.connect(fb); fb.connect(d); d.connect(dWet); dWet.connect(output);
+    gate.connect(cv); dWet.connect(cv); cv.connect(rWet); rWet.connect(output);
+    var api = {
+      input: input,
+      output: output,
+      set: function (s) {
+        s = normalizeEchoButton(s);
+        if (s.size !== size) { size = s.size; cv.buffer = makeImpulse(ctx, size, 3); }
+        setP(ctx, d.delayTime, s.time / 1000);
+        setP(ctx, fb.gain, Math.min(0.9, Math.pow(10, -2 / s.repeats)));
+        var m = s.mix / 100;
+        setP(ctx, dWet.gain, 0.9 * m);
+        setP(ctx, rWet.gain, 0.8 * m);
+      },
+      hold: function (on) {
+        var t = ctx.currentTime;
+        gate.gain.cancelScheduledValues(t);
+        gate.gain.setTargetAtTime(on ? 1 : 0, t, on ? 0.01 : 0.04);
+      },
+      // 確かめ用
+      nodes: { gate: gate.gain, delayTime: d.delayTime, feedback: fb.gain, delayWet: dWet.gain, reverbWet: rWet.gain },
+      destroy: function () { try { input.disconnect(); output.disconnect(); } catch (e) { /* なし */ } }
+    };
+    api.set(null);
+    return api;
   }
 
   // 加工のグラフを1つ作る。input に音を入れ、output から加工後の音を取る。
@@ -447,9 +587,11 @@
         setP(ctx, muffle.frequency, t < 0 ? Math.min(nyq, 20000 * Math.pow(2, t * 0.55)) : nyq);
         FX_LIST.forEach(function (f) {
           var e = s ? s.fx[f.key] : null;
-          fx[f.key].set(!!(e && e.on), e ? e.amt / 100 : 0.5);
+          fx[f.key].set(!!(e && e.on), e ? e.amt / 100 : 0.5, e || null);
         });
       },
+      // 確かめ用: 各エフェクトの主な値（AudioParam）
+      fxNodes: function () { var o = {}; FX_LIST.forEach(function (f) { o[f.key] = fx[f.key].nodes || {}; }); return o; },
       destroy: function () {
         starters.forEach(function (s) { try { s.stop(); } catch (e) { /* もう止まっている */ } });
         try { input.disconnect(); } catch (e) { /* なし */ }
@@ -462,6 +604,10 @@
 
   root.VoiceChangerEngine = {
     FX_LIST: FX_LIST,
+    FX_DETAIL: FX_DETAIL,
+    ECHO_BUTTON: ECHO_BUTTON,
+    normalizeEchoButton: normalizeEchoButton,
+    createHoldEcho: createHoldEcho,
     PITCH_MIN: PITCH_MIN, PITCH_MAX: PITCH_MAX,
     TONE_MIN: TONE_MIN, TONE_MAX: TONE_MAX,
     NAME_MAX: NAME_MAX,

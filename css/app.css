@@ -139,6 +139,7 @@ body.meeting{background:#090c15;overflow:hidden}
 .ctl.recon .b{background:rgba(240,101,106,.14);border-color:rgba(240,101,106,.45)}
 .ctl.recon .recdot{border-radius:4px;width:14px;height:14px}
 .ctl.recon span{color:#f4a0a3}
+#c-echo{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .sep{width:1px;height:36px;background:var(--line);margin:0 6px 20px}
 
 /* お知らせ */
@@ -195,6 +196,17 @@ input[type=range]:focus-visible{outline:2px solid var(--ac);outline-offset:2px;b
 .sw::after{content:"";position:absolute;top:3px;left:3px;width:15px;height:15px;border-radius:50%;background:#c9cfdc;transition:left .15s}
 .sw.on{background:var(--ac)} .sw.on::after{left:18px;background:#fff}
 .sw:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+/* エフェクトの「詳しく」（管理画面だけ） */
+.fxd-t{flex:none;height:28px;padding:0 10px;border-radius:8px;border:1px solid var(--line);font-size:12.5px;color:var(--sub)}
+.fxd-t[aria-expanded=true]{color:var(--ac);border-color:rgba(134,168,255,.35)}
+.fxd{padding:2px 0 10px 48px}
+.fxd.off{opacity:.45}
+.fxd-r{display:flex;align-items:center;gap:12px;height:34px;font-size:13px;color:var(--sub)}
+.fxd-l{width:96px;flex:none}
+.fxd-r input[type=range]{flex:1;margin:0}
+.fxd-r input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px}
+.fxd-r input[type=range]::-webkit-slider-thumb{width:16px;height:16px;margin-top:-6px}
+.fxd-v{width:72px;flex:none;text-align:right;font-weight:700;color:var(--ac)}
 
 /* キャラを替える（会議の中） */
 .swapgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:22px}
@@ -277,6 +289,15 @@ input[type=range]:focus-visible{outline:2px solid var(--ac);outline-offset:2px;b
   .sw.on::after{left:21px}
   .sw::before{content:"";position:absolute;inset:-8px -4px}
   .fx .sw{margin:0}
+  .fxd-t{order:2;height:44px;min-width:72px;font-size:13px}
+  .fx .n{order:1}
+  .fx .sw{order:0}
+  .fx input[type=range]{order:3}
+  .fxd{padding:0 0 8px}
+  .fxd-r{flex-wrap:wrap;height:auto;gap:0 10px;padding:4px 0}
+  .fxd-l{flex:1;width:auto}
+  .fxd-r input[type=range]{flex:1 1 100%;order:3;height:36px}
+  .fxd-r input[type=range]::-webkit-slider-thumb{width:24px;height:24px;margin-top:-10px}
   .swapgrid{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
   .swapgrid .ch.sel .ck{display:none}
   .fmt{flex-wrap:wrap;height:auto;padding:10px 14px;row-gap:2px}

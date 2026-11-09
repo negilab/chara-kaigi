@@ -520,6 +520,7 @@ function showMeeting() {
       ${ctl('c-focus', icon('focus'), '話す人を大きく')}
       ${ctl('c-save', icon('save'), '文字起こし<wbr>を保存')}
       ${ctl('c-rec', '<span class="recdot"></span>', '録画')}
+      ${ctl('c-echo', icon('echo'), 'エコー')}
       <div class="sep"></div>
       ${ctl('c-leave', icon('leave'), '退室', 'leave')}
       <div class="outright"><span class="recpill" id="recpill" hidden><i></i>録画中 <b id="rectime">0:00</b></span>
@@ -537,6 +538,7 @@ function showMeeting() {
   $('#c-save').addEventListener('click', () => { if (!saveTranscript()) toast('まだ発言がありません'); });
   $('#c-rec').addEventListener('click', () => (S.rec ? stopRec() : startRec()));
   $('#c-leave').addEventListener('click', askLeave);
+  setupEchoButton();
   setupStagePointer();
   setupPeople();
   dbg('sr', recog ? '動作中' : '-');
@@ -544,6 +546,33 @@ function showMeeting() {
   paintBarInfo();
   paintEditHits();
   paintPeople();
+}
+
+// 「エコー」ボタン: 押しているあいだだけ、声にディレイ＋リバーブを重ねる（響きは管理画面で決める）
+function setupEchoButton() {
+  const b = $('#c-echo');
+  let held = false;
+  const on = (ev) => {
+    if (ev.cancelable) ev.preventDefault();   // 長押しで文字が選ばれたり、メニューが出たりしないように
+    if (held || !S.media) return;
+    held = true;
+    S.media.setHoldEcho(true, S.defaults && S.defaults._echoButton);
+    b.classList.add('on');
+  };
+  const off = () => {
+    if (!held) return;
+    held = false;
+    if (S.media) S.media.setHoldEcho(false);
+    b.classList.remove('on');
+  };
+  b.addEventListener('touchstart', on, { passive: false });
+  b.addEventListener('touchend', (ev) => { if (ev.cancelable) ev.preventDefault(); off(); }, { passive: false });
+  b.addEventListener('touchcancel', off);
+  b.addEventListener('mousedown', (ev) => { if (ev.button === 0) on(ev); });
+  window.addEventListener('mouseup', off);
+  b.addEventListener('mouseleave', off);
+  b.addEventListener('contextmenu', (ev) => ev.preventDefault());
+  window.addEventListener('blur', off);
 }
 
 function fitStage() {

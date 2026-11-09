@@ -33,6 +33,10 @@ export class LocalMedia {
     this.dest = ac.createMediaStreamDestination();
     this.dest.channelCount = 1;
     this.muteGain.connect(this.dest);
+    // 「エコー」ボタン: 加工後の声から響きを作り、同じ出口（送る声・録画）に足す
+    this.holdEcho = E.createHoldEcho(ac);
+    this.engine.output.connect(this.holdEcho.input);
+    this.holdEcho.output.connect(this.muteGain);
     this.outTrack = this.dest.stream.getAudioTracks()[0];
     // 自分の声を自分で聞く（試しに聞くときだけ）
     this.monitor = ac.createGain();
@@ -61,6 +65,13 @@ export class LocalMedia {
   }
 
   applyVoice(voice) { if (this.engine) this.engine.apply(voice); }
+
+  // 「エコー」ボタン。on のあいだだけ響きを重ねる（声の設定は変えない）
+  setHoldEcho(on, settings) {
+    if (!this.holdEcho) return;
+    if (on) this.holdEcho.set(settings);
+    this.holdEcho.hold(on);
+  }
 
   setMic(on) {
     this.micOn = on;
