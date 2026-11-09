@@ -142,7 +142,7 @@ body.meeting{background:#090c15;overflow:hidden}
 .sep{width:1px;height:36px;background:var(--line);margin:0 6px 20px}
 
 /* お知らせ */
-.toast{position:fixed;left:50%;bottom:128px;transform:translateX(-50%);z-index:200;display:flex;align-items:center;gap:10px;min-height:46px;padding:10px 20px;border-radius:23px;background:rgba(12,16,30,.94);border:1px solid rgba(134,168,255,.4);font-size:14px;font-weight:700;color:#dfe6ff;max-width:80vw;transition:opacity .25s}
+.toast{position:fixed;left:50%;bottom:128px;transform:translateX(-50%);z-index:200;display:flex;align-items:center;gap:10px;min-height:46px;padding:10px 20px;border-radius:23px;background:rgba(12,16,30,.94);border:1px solid rgba(134,168,255,.4);font-size:14px;font-weight:700;color:#dfe6ff;max-width:80vw;transition:opacity .25s;pointer-events:none}
 .toast svg{width:18px;height:18px;color:var(--ac)}
 body:not(.meeting) .toast{bottom:32px}
 
@@ -211,6 +211,11 @@ input[type=range]:focus-visible{outline:2px solid var(--ac);outline-offset:2px;b
 
 /* ===== 携帯（iPhone など）: PC の見た目は変えない。ここから下はすべて狭い幅か低い高さのときだけ ===== */
 .people{display:none}
+/* 舞台: 指で触れても、ページのスクロール・拡大・長押しの選択や吹き出しが起きないように（見た目は変わらない） */
+.stagebox{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.stagebox canvas{-webkit-user-drag:none}
+/* 診断の札（?debug=1 のときだけ出る） */
+.ckdbg{position:fixed;left:6px;top:calc(6px + env(safe-area-inset-top));z-index:300;max-width:calc(100vw - 12px);padding:6px 8px;border-radius:8px;background:rgba(0,0,0,.78);color:#9ff0b0;font:11px/1.45 Consolas,monospace;white-space:pre-wrap;pointer-events:none}
 .pc-mv svg{width:20px;height:20px}
 .pc-mv button:first-child svg{transform:scaleX(-1)}
 .sheet .pp-r{border-top:none;padding:0}

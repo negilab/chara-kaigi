@@ -539,6 +539,7 @@ function showMeeting() {
   $('#c-leave').addEventListener('click', askLeave);
   setupStagePointer();
   setupPeople();
+  dbg('sr', recog ? '動作中' : '-');
   paintBar();
   paintBarInfo();
   paintEditHits();
@@ -688,30 +689,37 @@ function setupStagePointer() {
       $$('#seg button').forEach((b) => b.classList.toggle('on', b === sz));
     }
   });
-  ov.addEventListener('pointermove', (ev) => {
-    const pt = toStage(ev);
+  // ドラッグの動き（マウスと指で同じものを使う）。動かしていれば true
+  const moveDrag = (cx, cy) => {
+    const pt = toStage({ clientX: cx, clientY: cy });
     if (dragStart && !drag) {
-      if (Math.hypot(ev.clientX - dragStart.cx, ev.clientY - dragStart.cy) > 6) {
+      if (Math.hypot(cx - dragStart.cx, cy - dragStart.cy) > 6) {
         drag = { id: dragStart.id, px: pt.x, py: pt.y, targetId: null };
         $('#hov').hidden = true;
         document.body.classList.add('dragging');
+        dbg('drag', `開始 ${personName(drag.id)}`);
       }
     }
-    if (drag) {
-      drag.px = pt.x; drag.py = pt.y;
-      drag.targetId = nearestSlot(pt, drag.id);
-      const t = $('#dragtoast');
-      t.hidden = false;
-      t.style.left = `${Math.max(20, Math.min(W - 420, pt.x - 560))}px`;
-      t.style.top = `${Math.max(20, pt.y - 360 * 0.25 + 20)}px`;
-      return;
-    }
+    if (!drag) return false;
+    drag.px = pt.x; drag.py = pt.y;
+    drag.targetId = nearestSlot(pt, drag.id);
+    const t = $('#dragtoast');
+    t.hidden = false;
+    t.style.left = `${Math.max(20, Math.min(W - 420, pt.x - 560))}px`;
+    t.style.top = `${Math.max(20, pt.y - 360 * 0.25 + 20)}px`;
+    return true;
+  };
+  ov.addEventListener('pointermove', (ev) => {
+    if (ev.pointerType === 'touch') return;   // 指はタッチイベントで扱う
+    const pt = toStage(ev);
+    if (moveDrag(ev.clientX, ev.clientY)) return;
     if (ev.pointerType && ev.pointerType !== 'mouse') return;
     if (ev.target.closest('#hov')) return;
     showHover(layoutMode() === 'row' ? personAt(pt) : null);
   });
   ov.addEventListener('pointerleave', () => { if (!drag && !dragStart) showHover(null); });
   ov.addEventListener('pointerdown', (ev) => {
+    if (ev.pointerType === 'touch') return;   // 指はタッチイベントで扱う
     tapId = null;
     if (ev.button !== 0 || layoutMode() !== 'row') return;
     if (ev.target.closest('[data-size]') || ev.target.closest('[data-edit]') || ev.target.closest('.inline-edit')) return;
@@ -722,6 +730,7 @@ function setupStagePointer() {
     ov.setPointerCapture(ev.pointerId);
   });
   const end = (ev) => {
+    if (ev && ev.pointerType === 'touch') return;   // 指はタッチイベントで扱う
     const tapped = ev && ev.type === 'pointerup' && dragStart && dragStart.touch && !drag ? dragStart.id : null;
     if (drag && drag.targetId) {
       const ord = orderedIds();
@@ -735,6 +744,49 @@ function setupStagePointer() {
   };
   ov.addEventListener('pointerup', end);
   ov.addEventListener('pointercancel', end);
+
+  // ---- 指: タッチイベントで動かす。人に触れたときは既定の動き（スクロール・拡大・長押しの選択・click）を止める ----
+  let touchId = null;
+  const finger = (ev) => Array.from(ev.changedTouches).find((t) => t.identifier === touchId);
+  ov.addEventListener('touchstart', (ev) => {
+    const t = ev.changedTouches[0];
+    dbg('touch', `${ev.type} 指${ev.touches.length}`);
+    if (dragStart || ev.touches.length !== 1 || layoutMode() !== 'row') return;
+    if (ev.target.closest('[data-size]') || ev.target.closest('[data-edit]') || ev.target.closest('.inline-edit')) return;
+    const id = personAt(toStage(t));
+    dbg('drag', id ? `触れた ${personName(id)}` : '人の外');
+    if (!id) return;
+    ev.preventDefault();
+    touchId = t.identifier;
+    dragStart = { id, cx: t.clientX, cy: t.clientY, touch: true };
+  }, { passive: false });
+  ov.addEventListener('touchmove', (ev) => {
+    if (!dragStart || touchId === null) return;
+    ev.preventDefault();
+    const t = finger(ev);
+    if (!t) return;
+    dbg('touch', 'touchmove');
+    moveDrag(t.clientX, t.clientY);
+  }, { passive: false });
+  const touchEnd = (ev) => {
+    if (!dragStart || touchId === null || !finger(ev)) return;
+    if (ev.cancelable) ev.preventDefault();
+    dbg('touch', ev.type);
+    const tapped = ev.type === 'touchend' && !drag ? dragStart.id : null;
+    const moved = drag ? `${personName(drag.id)} → ${drag.targetId ? personName(drag.targetId) : '（移る先なし）'}` : '';
+    if (ev.type === 'touchend' && drag && drag.targetId) {
+      const ord = orderedIds();
+      const i = ord.indexOf(drag.id), j = ord.indexOf(drag.targetId);
+      if (i >= 0 && j >= 0) { [ord[i], ord[j]] = [ord[j], ord[i]]; S.room.setState({ order: ord }); }
+    }
+    if (moved) dbg('drag', `${ev.type === 'touchend' ? '終わり' : '取り消し'} ${moved}`);
+    touchId = null; drag = null; dragStart = null;
+    $('#dragtoast').hidden = true;
+    document.body.classList.remove('dragging');
+    if (tapped) openPersonSheet(tapped);   // click は止めたので、ここで開く
+  };
+  ov.addEventListener('touchend', touchEnd, { passive: false });
+  ov.addEventListener('touchcancel', touchEnd, { passive: false });
 }
 
 // ---- 指で触る端末の操作: 参加者ごとの大きさ・並び（縦向きは画面の下の欄、横向きは人に触れると窓で出る） ----
@@ -818,12 +870,34 @@ function editDialog(kind) {
   });
 }
 
+// ---- 診断の札（?debug=1 のときだけ。携帯で写しを撮ってもらうため） ----
+const dbgVals = { sr: '', touch: '', drag: '' };
+function dbg(k, v) {
+  if (!DEBUG) return;
+  dbgVals[k] = `${v} ${new Date().toTimeString().slice(0, 8)}`;
+  let el = document.getElementById('ckdbg');
+  if (!el) { el = document.createElement('div'); el.id = 'ckdbg'; el.className = 'ckdbg'; document.body.appendChild(el); }
+  el.textContent = `音声認識: ${SR ? 'あり' : 'なし'}${IOS ? '（iOS）' : ''}\n最後の音声認識: ${dbgVals.sr || '-'}\n最後の指: ${dbgVals.touch || '-'}\nドラッグ: ${dbgVals.drag || '-'}`;
+}
+
 // ---------- 字幕・文字起こし ----------
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+// iPhone・iPad（Safari 以外のブラウザは音声認識を使えないことが多い）
+const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 let recog = null, srWant = false, srBlocked = false, srSession = 0, srWarned = false;
+let srQuick = 0;              // 何も聞き取らないまま、すぐ終わった回数
+const srShown = new Set();    // 一度出したお知らせ（同じものは出さない）
+function srStop(msg) {
+  srBlocked = true;
+  if (!srShown.has(msg)) { srShown.add(msg); toast(msg, 6000); }
+}
 
 function startCaptions() {
-  if (!SR) { if (!srWarned) { srWarned = true; toast('この Chrome では音声認識を使えないため、字幕は出ません'); } return; }
+  if (!SR) {
+    dbg('sr', 'なし');
+    if (!srWarned) { srWarned = true; toast(IOS ? 'この端末では字幕を作れません（ほかの人の字幕は出ます）' : 'この Chrome では音声認識を使えないため、字幕は出ません'); }
+    return;
+  }
   if (srBlocked || !S.media || !S.media.micOn) return;
   srWant = true;
   if (recog) return;
@@ -832,7 +906,12 @@ function startCaptions() {
   r.continuous = true;
   r.interimResults = true;
   const sess = ++srSession;
+  const startedAt = performance.now();
+  let heard = false, lastErr = '';
+  r.onstart = () => dbg('sr', 'start');
+  r.onaudiostart = () => dbg('sr', 'audiostart');
   r.onresult = (ev) => {
+    if (!heard) { heard = true; srQuick = 0; dbg('sr', 'result'); }
     for (let i = ev.resultIndex; i < ev.results.length; i++) {
       const res = ev.results[i];
       const text = res[0].transcript.trim();
@@ -843,16 +922,29 @@ function startCaptions() {
     }
   };
   r.onerror = (ev) => {
-    if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
-      srBlocked = true;
-      toast('音声認識を使えないため、字幕は出ません（マイクの許可を確かめてください）');
+    lastErr = ev.error || 'error';
+    dbg('sr', `error: ${lastErr}`);
+    if (lastErr === 'not-allowed' || lastErr === 'service-not-allowed') {
+      srStop(IOS ? `この端末では字幕を作れません（ほかの人の字幕は出ます）［${lastErr}］`
+        : `音声認識を使えないため、字幕は出ません（マイクの許可を確かめてください）［${lastErr}］`);
+    } else if (lastErr !== 'no-speech' && lastErr !== 'aborted' && !srShown.has(lastErr)) {
+      srShown.add(lastErr);
+      toast(`字幕を作れませんでした［${lastErr}］`, 5000);
     }
   };
   r.onend = () => {
     recog = null;
-    if (srWant && !srBlocked && S.screen === 'meet') setTimeout(startCaptions, 300);
+    dbg('sr', `end${lastErr ? ` (${lastErr})` : ''}`);
+    // 何も聞き取らずに 1.5 秒以内で終わるのが 5 回続いたら、繰り返すのをやめる
+    if (!heard && performance.now() - startedAt < 1500) srQuick++;
+    if (srQuick >= 5 && !srBlocked) srStop(`字幕を止めました。この端末では音声認識がすぐに終わってしまいます［${lastErr || 'end'}］`);
+    if (srWant && !srBlocked && S.screen === 'meet') setTimeout(startCaptions, 300 + srQuick * 700);
   };
-  try { r.start(); } catch (e) { recog = null; }
+  try { r.start(); } catch (e) {
+    recog = null;
+    dbg('sr', `start失敗: ${e && e.name}`);
+    srStop(`字幕を作れませんでした［${(e && e.name) || 'start'}］`);
+  }
 }
 function stopCaptions() {
   srWant = false;
