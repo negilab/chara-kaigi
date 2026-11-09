@@ -421,7 +421,34 @@ function onPeerData(id, m) {
     if (r.st.mouth > 0 && r.mic) r.talkAt = now;
   } else if (m.t === 'cap') {
     onCaption(id, String(m.id || ''), String(m.text || '').slice(0, 400), !!m.final);
+  } else if (m.t === 'drag' && typeof m.id === 'string') {
+    const q = cleanPos({ x: m.x, y: m.y });
+    if (q) liveDrags.set(m.id, { x: q.x, y: q.y, on: !!m.on, at: now });
   }
+}
+// ---- ドラッグの途中を、ほかの人にも（なめらかに動いて見えるように）----
+// id → { x, y, on, at }。on: つかんでいる最中。離したあとも、部屋の状態に置き場所が届くまで（3 秒まで）は、その場所に置いておく
+const liveDrags = new Map();
+let dragSentAt = 0;
+function sendDrag(d, on, force) {
+  const now = performance.now();
+  if (!S.mesh || (!force && now - dragSentAt < 40)) return;   // 25 回/秒まで
+  dragSentAt = now;
+  S.mesh.broadcast({ t: 'drag', id: d.id, x: +(d.ax / W).toFixed(4), y: +(d.ay / H).toFixed(4), on });
+}
+function liveModel(now) {
+  const out = {};
+  const pos = S.state.pos || {};
+  liveDrags.forEach((v, id) => {
+    const age = now - v.at;
+    if (v.on && age < 1500) { out[id] = { x: v.x, y: v.y, on: true }; return; }
+    const p = pos[id];
+    const arrived = p && Math.abs(p.x - v.x) < 0.003 && Math.abs(p.y - v.y) < 0.003;
+    if (!arrived && age < 3000) out[id] = { x: v.x, y: v.y, on: false };
+    else liveDrags.delete(id);
+  });
+  if (drag) out[drag.id] = { x: drag.ax / W, y: drag.ay / H, on: true, local: true };
+  return out;
 }
 
 function onPeerTrack(id, track, stream) {
@@ -507,7 +534,7 @@ function buildModel(now, key) {
   }
   return {
     key, people, share, speakerId: S.speakerId,
-    topic: S.state.topic || '', show: S.state.show || 'キャラ会議', caption, captionsOn: S.captionsOn,
+    topic: S.state.topic || '', show: S.state.show || 'キャラ会議', caption, captionsOn: S.captionsOn, live: liveModel(now),
     pos: posMap(), z: S.state.z || {}
   };
 }
@@ -819,6 +846,7 @@ function setupStagePointer() {
     drag.px = pt.x; drag.py = pt.y;
     drag.ax = Math.min(POS_X[1] * W, Math.max(POS_X[0] * W, pt.x - drag.gx));
     drag.ay = Math.min(POS_Y[1] * H, Math.max(POS_Y[0] * H, pt.y - drag.gy));
+    sendDrag(drag, true);
     const t = $('#dragtoast');
     t.hidden = false;
     t.style.left = `${Math.max(20, Math.min(W - 420, pt.x - 560))}px`;
@@ -848,7 +876,7 @@ function setupStagePointer() {
   const end = (ev) => {
     if (ev && ev.pointerType === 'touch') return;   // 指はタッチイベントで扱う
     const tapped = ev && ev.type === 'pointerup' && dragStart && dragStart.touch && !drag ? dragStart.id : null;
-    if (drag && ev && ev.type === 'pointerup') commitDrag(drag);
+    if (drag && ev && ev.type === 'pointerup') { commitDrag(drag); sendDrag(drag, false, true); }
     else if (dragStart && !drag && ev && ev.type === 'pointerup') bringFront(dragStart.id);
     drag = null; dragStart = null;
     $('#dragtoast').hidden = true;
@@ -887,7 +915,7 @@ function setupStagePointer() {
     dbg('touch', ev.type);
     const tapped = ev.type === 'touchend' && !drag ? dragStart.id : null;
     const moved = drag ? `${personName(drag.id)} → (${Math.round(drag.ax)}, ${Math.round(drag.ay)})` : '';
-    if (ev.type === 'touchend' && drag) commitDrag(drag);
+    if (ev.type === 'touchend' && drag) { commitDrag(drag); sendDrag(drag, false, true); }
     if (tapped) bringFront(tapped);
     if (moved) dbg('drag', `${ev.type === 'touchend' ? '終わり' : '取り消し'} ${moved}`);
     touchId = null; drag = null; dragStart = null;

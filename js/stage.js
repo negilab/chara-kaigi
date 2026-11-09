@@ -159,12 +159,24 @@ export function createStage() {
     const k = 1 - Math.exp(-dt / 120);
     const kt = 1 - Math.exp(-dt / 90);
     const seen = new Set();
+    const live = model.live || {};
+    const kl = 1 - Math.exp(-dt / 60);   // ほかの人がドラッグしている絵は、届いた場所へ少し速めに寄せる（20〜30回/秒の知らせのあいだを埋める）
     model.people.forEach((p) => {
-      const L = lay.get(p.id);
+      let L = lay.get(p.id);
       seen.add(p.id);
+      // ドラッグ中（だれかが動かしている途中）は、その場所を目標に
+      const lv = live[p.id];
+      if (lv) L = Object.assign({}, L, { x: lv.x * W, bottom: H - lv.y * H });
       let a = anim.get(p.id);
-      if (!a) { a = { x: L.x, w: L.w, bottom: L.bottom, talk: 0, hop: 0, grow: 0 }; anim.set(p.id, a); }
-      a.x += (L.x - a.x) * k; a.w += (L.w - a.w) * k; a.bottom += (L.bottom - a.bottom) * k;
+      if (!a) { a = { x: L.x, w: L.w, bottom: L.bottom, talk: 0, hop: 0, grow: 0, lift: 0 }; anim.set(p.id, a); }
+      if (lv && lv.local) { a.x = L.x; a.bottom = L.bottom; }   // 自分で動かしている絵は、指（マウス）にぴったり
+      else {
+        const kk = lv ? kl : k;   // 置き場所・大きさ・画面共有の並びは、なめらかに動かす
+        a.x += (L.x - a.x) * kk; a.bottom += (L.bottom - a.bottom) * kk;
+      }
+      a.w += (L.w - a.w) * k;
+      // つかんでいるあいだは、少し持ち上げて見せる
+      a.lift = (a.lift || 0) + (((lv && lv.on) ? 1 : 0) - (a.lift || 0)) * (1 - Math.exp(-dt / 90));
       a.talk += ((p.talking ? 1 : 0) - a.talk) * kt;
       // 話す人を大きく: いま話している人を、足もとを動かさずに少しずつ大きく（戻すときはゆっくり）
       const growT = p.talking && p.id === model.speakerId ? 1 : 0;
@@ -215,6 +227,14 @@ export function createStage() {
       g.scale(1.04, 1.04);
       g.translate(-x, -(top + h / 2));
       g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = 40; g.shadowOffsetY = 40;
+    }
+    // つかまれている絵: 足もとを中心に 1.05 倍、少し上へ、やわらかい影（録画にも映る）
+    const lf = o.ghost ? 0 : (a.lift || 0);
+    if (lf > 0.01) {
+      g.translate(x, top + h);
+      g.scale(1 + 0.05 * lf, 1 + 0.05 * lf);
+      g.translate(-x, -(top + h) - 10 * lf);
+      g.shadowColor = `rgba(0,0,0,${(0.4 * lf).toFixed(3)})`; g.shadowBlur = 36 * lf; g.shadowOffsetY = 18 * lf;
     }
     g.drawImage(c, x - w / 2, top);
     g.restore();
@@ -394,18 +414,13 @@ export function createStage() {
     badges = [];
     const drag = ui && ui.drag;
     const z = model.z || {};
-    const zs = (p) => (drag && drag.id === p.id ? Infinity : Number(z[p.id]) || 0);
+    const live = model.live || {};
+    const zs = (p) => ((drag && drag.id === p.id) || (live[p.id] && live[p.id].on) ? Infinity : Number(z[p.id]) || 0);
     // 重なったときは、最後に触れた人（z が大きい人）を前に
     const order = model.people.map((p, i) => [p, i]).sort((a, b) => zs(a[0]) - zs(b[0]) || a[1] - b[1]).map((x) => x[0]);
     order.forEach((p) => {
       const a = anim.get(p.id);
       if (!a) return;
-      if (drag && drag.id === p.id) {
-        // ドラッグ中: 指（マウス）の場所に、そのままの大きさで描く
-        const h = a.w * 0.5625;
-        drawPerson(g, `${model.key}-${p.id}`, p, a, { x: drag.ax, top: drag.ay - h });
-        return;
-      }
       drawPerson(g, `${model.key}-${p.id}`, p, a, { small: !!model.share });
     });
     badges.forEach((b) => drawBadge(g, b));
