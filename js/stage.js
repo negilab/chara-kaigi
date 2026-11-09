@@ -2,9 +2,12 @@
 import { A, ICONS, inkOn } from './common.js';
 
 export const W = 1920, H = 1080;
-export const SIZE_W = { L: 960, M: 700, S: 480 };
+// キャラの絵の大きさ（大中小）。CHAR_SCALE を掛けた幅が、並び・空き場所さがし・触れた判定のすべてに使われる
+export const CHAR_SCALE = 0.7;
+export const SIZE_W = { L: 960 * CHAR_SCALE, M: 700 * CHAR_SCALE, S: 480 * CHAR_SCALE };
 export const SIZE_LABEL = { L: '大', M: '中', S: '小' };
-const GROW = 1.3;            // 話している人を大きくする倍率
+export const SPEAK_SCALE = 1.2;   // 話している人を大きくする倍率
+const GROW = SPEAK_SCALE;
 const VIS = 0.46;            // 絵の幅のうち、キャラが写っている幅
 const SAFE_L = 100, SAFE_R = 1820;
 const AC = '#86a8ff';
