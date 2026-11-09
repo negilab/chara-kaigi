@@ -509,7 +509,7 @@ function buildModel(now, key) {
     if (age < life) caption = { name: S.caption.name, color: S.caption.color, text: S.caption.text, alpha: Math.min(1, (life - age) / 500) };
   }
   return {
-    key, people, share, focus: !!S.state.focus, speakerId: S.speakerId,
+    key, people, share, speakerId: S.speakerId,
     topic: S.state.topic || '', show: S.state.show || 'キャラ会議', caption, captionsOn: S.captionsOn,
     pos: posMap(), z: S.state.z || {}
   };
@@ -544,7 +544,6 @@ function showMeeting() {
       ${ctl('c-swap', icon('swap'), 'キャラを替える')}
       ${CAN_SHARE ? ctl('c-share', icon('share'), '画面共有') : ''}
       ${ctl('c-cc', icon('cc'), '字幕 オン', 'on')}
-      ${ctl('c-focus', icon('focus'), '話す人を大きく')}
       ${ctl('c-save', icon('save'), '文字起こし<wbr>を保存')}
       ${ctl('c-rec', '<span class="recdot"></span>', '録画')}
       ${ctl('c-echo', icon('echo'), 'エコー')}
@@ -561,7 +560,6 @@ function showMeeting() {
   $('#c-swap').addEventListener('click', () => openVoiceDialog(true));
   if (CAN_SHARE) $('#c-share').addEventListener('click', () => (S.share ? stopShare() : startShare()));
   $('#c-cc').addEventListener('click', () => { S.captionsOn = !S.captionsOn; paintBar(); });
-  $('#c-focus').addEventListener('click', () => S.room.setState({ focus: !S.state.focus }));
   $('#c-save').addEventListener('click', () => { if (!saveTranscript()) toast('まだ発言がありません'); });
   $('#c-rec').addEventListener('click', () => (S.rec ? stopRec() : startRec()));
   $('#c-leave').addEventListener('click', askLeave);
@@ -623,7 +621,6 @@ function paintBar() {
   setCtl('c-mic', on ? 'マイク オン' : 'マイク オフ', on ? 'on' : 'off', icon(on ? 'mic' : 'micoff'));
   setCtl('c-share', S.share ? '共有を止める' : '画面共有', S.share ? 'on' : '');
   setCtl('c-cc', S.captionsOn ? '字幕 オン' : '字幕 オフ', S.captionsOn ? 'on' : '');
-  setCtl('c-focus', '話す人を大きく', S.state.focus ? 'on' : '');
   setCtl('c-rec', S.rec ? '録画中' : '録画', S.rec ? 'recon' : '');
   $('#recpill').hidden = !S.rec;
 }
@@ -696,7 +693,6 @@ function toStage(ev) {
   const r = $('#stagewrap').getBoundingClientRect();
   return { x: (ev.clientX - r.left) / fitK, y: (ev.clientY - r.top) / fitK };
 }
-function layoutMode() { return S.state.sharer ? 'share' : S.state.focus ? 'focus' : 'row'; }
 function personAt(pt, exceptId) {
   // 重なっているときは、前に描かれている人（z が大きい人）を選ぶ
   const z = S.state.z || {};
@@ -719,7 +715,7 @@ function posMap() {
   if (p && typeof p === 'object') Object.keys(p).forEach((id) => { const q = cleanPos(p[id]); if (q) out[id] = q; });
   return out;
 }
-function freeOn() { return layoutMode() === 'row' && Object.keys(posMap()).length > 0; }
+function freeOn() { return Object.keys(posMap()).length > 0; }
 // 動かした場所を、全員に。初めて動かしたときは、ほかの人も今の場所のまま残す
 function commitDrag(d) {
   const patch = {};
@@ -757,7 +753,7 @@ function placeMeIfNeeded() {
   if (!freeOn() || pos[S.myId]) return;
   const sizes = S.state.sizes || {};
   const people = orderedIds().map((id) => ({ id, size: sizes[id] || 'L' }));
-  const L = computeLayout(people, 'row', '', pos).get(S.myId);
+  const L = computeLayout(people, pos).get(S.myId);
   if (!L) return;
   autoPlaced = true;
   S.room.setState({ [`pos/${S.myId}`]: { x: L.x / W, y: (H - L.bottom) / H } });
@@ -774,7 +770,7 @@ function nearestSlot(pt, exceptId) {
 function showHover(id) {
   const hov = $('#hov');
   hover = id;
-  if (!id || layoutMode() !== 'row') { hov.hidden = true; hover = null; return; }
+  if (!id) { hov.hidden = true; hover = null; return; }
   const a = S.stage.anim.get(id);
   if (!a) { hov.hidden = true; return; }
   const L = a.target, h = L.w * 0.5625;
@@ -830,13 +826,13 @@ function setupStagePointer() {
     if (moveDrag(ev.clientX, ev.clientY)) return;
     if (ev.pointerType && ev.pointerType !== 'mouse') return;
     if (ev.target.closest('#hov')) return;
-    showHover(layoutMode() === 'row' ? personAt(pt) : null);
+    showHover(personAt(pt));
   });
   ov.addEventListener('pointerleave', () => { if (!drag && !dragStart) showHover(null); });
   ov.addEventListener('pointerdown', (ev) => {
     if (ev.pointerType === 'touch') return;   // 指はタッチイベントで扱う
     tapId = null;
-    if (ev.button !== 0 || layoutMode() !== 'row') return;
+    if (ev.button !== 0) return;
     if (ev.target.closest('[data-size]') || ev.target.closest('[data-edit]') || ev.target.closest('[data-reset]') || ev.target.closest('.inline-edit')) return;
     const pt = toStage(ev);
     const id = ev.target.closest('#grip') ? hover : personAt(pt);
@@ -863,7 +859,7 @@ function setupStagePointer() {
   ov.addEventListener('touchstart', (ev) => {
     const t = ev.changedTouches[0];
     dbg('touch', `${ev.type} 指${ev.touches.length}`);
-    if (dragStart || ev.touches.length !== 1 || layoutMode() !== 'row') return;
+    if (dragStart || ev.touches.length !== 1) return;
     if (ev.target.closest('[data-size]') || ev.target.closest('[data-edit]') || ev.target.closest('.inline-edit')) return;
     const id = personAt(toStage(t));
     dbg('drag', id ? `触れた ${personName(id)}` : '人の外');
@@ -909,8 +905,7 @@ function movePerson(id, dir) {
 }
 function personCtl(id, i, n) {
   const size = (S.state.sizes || {})[id] || 'L';
-  const row = layoutMode() === 'row';
-  return `<div class="pc-seg" role="group" aria-label="大きさ">${['L', 'M', 'S'].map((z) => `<button type="button" data-id="${esc(id)}" data-size="${z}" class="${z === size ? 'on' : ''}" aria-pressed="${z === size}" ${row ? '' : 'disabled'}>${SIZE_LABEL[z]}</button>`).join('')}</div>
+  return `<div class="pc-seg" role="group" aria-label="大きさ">${['L', 'M', 'S'].map((z) => `<button type="button" data-id="${esc(id)}" data-size="${z}" class="${z === size ? 'on' : ''}" aria-pressed="${z === size}">${SIZE_LABEL[z]}</button>`).join('')}</div>
     <div class="pc-mv"><button type="button" data-id="${esc(id)}" data-move="-1" aria-label="左へ" ${i === 0 ? 'disabled' : ''}>${icon('arrow')}</button><button type="button" data-id="${esc(id)}" data-move="1" aria-label="右へ" ${i === n - 1 ? 'disabled' : ''}>${icon('arrow')}</button></div>`;
 }
 function onPersonCtl(ev) {
@@ -926,8 +921,7 @@ function paintPeople() {
   const box = $('#people');
   if (!box || S.screen !== 'meet') return;
   const ids = orderedIds();
-  const mode = layoutMode();
-  const note = mode === 'row' ? (freeOn() ? '舞台の上のキャラは、ドラッグで好きな場所に置けます。「並べ直す」で横一列に戻ります' : '並びと大きさは全員に反映されます。舞台の上のキャラは、ドラッグで好きな場所に置けます') : mode === 'focus' ? '「話す人を大きく」のあいだは、大きさを替えられません' : '画面共有のあいだは、大きさを替えられません';
+  const note = freeOn() ? '舞台の上のキャラは、ドラッグで好きな場所に置けます。「並べ直す」で横一列に戻ります' : '並びと大きさは全員に反映されます。舞台の上のキャラは、ドラッグで好きな場所に置けます';
   box.innerHTML = `<div class="pp-h"><span>参加者 ${ids.length}人</span>
       <span class="pp-ed">${freeOn() ? '<button type="button" data-id="-" data-reset>並べ直す</button>' : ''}<button type="button" data-id="-" data-edit="show">番組名</button><button type="button" data-id="-" data-edit="topic">お題</button></span></div>
     ${ids.map((id, i) => `<div class="pp-r"><span class="pp-n">${esc(personName(id))}${id === S.myId ? '<i>あなた</i>' : ''}</span>${personCtl(id, i, ids.length)}</div>`).join('')}
@@ -935,7 +929,7 @@ function paintPeople() {
 }
 let sheetId = null;
 function openPersonSheet(id) {
-  if (layoutMode() !== 'row' || !S.stage.anim.has(id)) return;
+  if (!S.stage.anim.has(id)) return;
   const scrim = openDialog('<div id="psheet"></div>', () => { sheetId = null; });
   sheetId = id;
   scrim.querySelector('.dlg').classList.add('sheet');
