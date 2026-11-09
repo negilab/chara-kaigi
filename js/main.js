@@ -81,6 +81,16 @@ const MOUTH_DEFAULT = 80;
 function savedMouth() {
   try { const r = localStorage.getItem('ck-mouth'); const v = Number(r); return r != null && r !== '' && isFinite(v) ? Math.min(100, Math.max(0, v)) : MOUTH_DEFAULT; } catch (e) { return MOUTH_DEFAULT; }
 }
+// 瞬きの反応（0〜100。右ほど敏感）。この端末の、この人だけの設定。既定は前より少し鈍い 40
+const BLINK_DEFAULT = 40;
+function savedBlink() {
+  try { const r = localStorage.getItem('ck-blink'); const v = Number(r); return r != null && r !== '' && isFinite(v) ? Math.min(100, Math.max(0, v)) : BLINK_DEFAULT; } catch (e) { return BLINK_DEFAULT; }
+}
+function setBlink(v, keep) {
+  S.blink = v;
+  S.anim.setBlinkSens(v);
+  if (keep) { try { localStorage.setItem('ck-blink', String(v)); } catch (e) { /* なし */ } }
+}
 // 0（鈍い）で +24dB、80 で 0dB、100（敏感）で -6dB
 function setMouth(v, keep) {
   S.mouth = v;
@@ -1486,6 +1496,10 @@ function openSoundDialog() {
       <input type="range" id="in-mouth" min="0" max="100" step="1">
       <div class="ends"><span>鈍い</span><span>敏感</span></div></label>
       <div class="mg-n">キーボードの音などで口が動くときは、鈍いほうへ動かしてください。</div></div>
+    <div class="box mg"><label class="ve-sl"><div class="t"><span>瞬きの反応</span></div>
+      <input type="range" id="in-blink" min="0" max="100" step="1">
+      <div class="ends"><span>鈍い</span><span>敏感</span></div></label>
+      <div class="mg-n">目を閉じたままになりやすいときは、鈍いほうへ動かしてください。</div></div>
     ${sw('snd-mon', m.monitorOn, '自分の声を聞く')}
     <div class="snd-note">ヘッドホンで聞いてください。スピーカーだと音が回ります</div>
     ${sw('snd-cc', S.captionsOn, '字幕')}
@@ -1541,6 +1555,9 @@ function openSoundDialog() {
   const mi = $('#in-mouth', scrim);
   mi.value = S.mouth; mi.style.setProperty('--p', `${S.mouth}%`);
   mi.addEventListener('input', () => { setMouth(Number(mi.value), true); mi.style.setProperty('--p', `${S.mouth}%`); });
+  const bi = $('#in-blink', scrim);
+  bi.value = S.blink; bi.style.setProperty('--p', `${S.blink}%`);
+  bi.addEventListener('input', () => { setBlink(Number(bi.value), true); bi.style.setProperty('--p', `${S.blink}%`); });
   $('#b-sndok', scrim).addEventListener('click', () => closeDialog());
   // マイクの入力レベル
   let meterRaf = 0;
@@ -1686,6 +1703,7 @@ try {
 // ---------- 始まり ----------
 async function boot() {
   setMouth(savedMouth(), false);
+  setBlink(savedBlink(), false);
   try {
     S.db = await getDb();
   } catch (e) {

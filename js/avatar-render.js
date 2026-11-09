@@ -84,6 +84,13 @@
     var center = { yaw: 0, pitch: 0, roll: 0 };
     var lastT = 0;
     var gateDb = 0;       // 口が開くしきい値の上乗せ（dB）。+ で鈍く、- で敏感。0 は今までどおり
+    // 瞬き: その人のふだんの値（目を開けているときの blink）をゆっくり覚え、そこからの上がりで閉じたと見る
+    var blinkBase = 0.2;      // ふだんの値（覚えていく）
+    var blinkMargin = 0.33;   // ふだんの値から、これだけ上がったら閉じた（瞬きの反応で変わる）
+    var shutSince = 0;        // 閉じた時刻
+    var forcedOpen = false;   // 長く閉じたままなので、読み違いとみなして開けている
+    var lastEyeT = 0;
+    var BLINK_MAX = 600;      // これより長く閉じたままなら、読み違いとして開ける（ふつうの瞬きは 0.1〜0.4 秒）
 
     var HOLD = 80;        // 口の形を保つ最短の時間（ms）
     var MAX_OPEN = 260;   // 開きっぱなしにしない（ぱたぱた感）
@@ -114,8 +121,22 @@
       if (!art || !art.eyesClosed) { eyesShut = false; return; }
       var fresh = face && face.found && now - faceAt < FACE_STALE && typeof face.blink === 'number';
       if (fresh) {
-        if (!eyesShut && face.blink > 0.5) eyesShut = true;
-        else if (eyesShut && face.blink < 0.35) eyesShut = false;
+        var dt = lastEyeT ? Math.min(200, now - lastEyeT) : 33;
+        lastEyeT = now;
+        var b = face.blink;
+        var shutTh = Math.max(0.4, blinkBase + blinkMargin);   // 閉じたと見るしきい値
+        var openTh = shutTh - 0.15;                             // 開いたと見るしきい値
+        if (forcedOpen) {
+          // 読み違いで開けている: 値が下がるまで待って、また閉じられるように戻す
+          if (b < shutTh) forcedOpen = false;
+        } else if (!eyesShut && b > shutTh) { eyesShut = true; shutSince = now; }
+        else if (eyesShut && b < openTh) eyesShut = false;
+        if (eyesShut && now - shutSince > BLINK_MAX) { eyesShut = false; forcedOpen = true; }
+        // 開いているあいだに、ふだんの値をゆっくり覚える（読み違いで開けているあいだは少し速く）。上がりすぎないように 0.55 まで
+        if (!eyesShut) {
+          var k = 1 - Math.exp(-dt / (forcedOpen ? 1500 : 4000));
+          blinkBase = Math.min(0.55, Math.max(0, blinkBase + (b - blinkBase) * k));
+        }
         nextBlink = now + rand(2500, 5500);
         return;
       }
@@ -155,6 +176,9 @@
       setArt: function (a) { art = a || null; },
       // 口の反応: しきい値を db だけ上げる（+ で鈍く）
       setMouthGate: function (db) { gateDb = isFinite(db) ? db : 0; },
+      // 瞬きの反応（0〜100。右ほど敏感）。0 で +0.45、100 で +0.15（ふだんの値からの上がり）
+      setBlinkSens: function (v) { v = isFinite(v) ? Math.min(100, Math.max(0, v)) : 40; blinkMargin = 0.45 - 0.3 * (v / 100); },
+      blinkState: function () { return { base: blinkBase, margin: blinkMargin, forcedOpen: forcedOpen, eyesShut: eyesShut }; },
       // f = { found, blink(0〜1), yaw, pitch, roll（ラジアン） }
       setFace: function (f) { face = f; faceAt = performance.now(); },
       state: function () { return { mouth: mouth, eyesShut: eyesShut, pose: pose, floorDb: floorDb, faceFresh: !!(face && face.found && performance.now() - faceAt < FACE_STALE) }; },
