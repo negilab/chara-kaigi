@@ -7,7 +7,7 @@ import { getDb, isLocalMode } from './db.js';
 import { Room, createRoom, roomInfo, cleanupOldRooms, newMemberId, validRoomId, MAX_MEMBERS } from './room.js';
 import { Mesh } from './mesh.js';
 import { LocalMedia } from './audio.js';
-import { createStage, W, H, SIZE_LABEL } from './stage.js';
+import { createStage, W, H, SIZE_LABEL, computeLayout, cleanPos, POS_X, POS_Y } from './stage.js';
 import { initFace, detectFace } from './face.js';
 
 const params = new URLSearchParams(location.search);
@@ -351,6 +351,7 @@ async function joinMeeting() {
   loadAllArts().then((arr) => arr.forEach((a, i) => { if (a) S.arts[CHARS[i].id] = a; }));
   try { await document.fonts.load('800 50px "M PLUS Rounded 1c"'); await document.fonts.load('700 18px "M PLUS Rounded 1c"'); } catch (e) { /* なし */ }
   showMeeting();
+  placeMeIfNeeded();
   startCaptions();
   window.addEventListener('pagehide', () => { if (S.room) S.room.leave(); });
 }
@@ -376,6 +377,7 @@ function onMembers(m) {
   if (S.state.sharer && !m[S.state.sharer]) S.room.setState({ sharer: null });
   paintBarInfo();
   paintPeople();
+  placeMeIfNeeded();
 }
 
 function onStateChange() {
@@ -385,6 +387,8 @@ function onStateChange() {
   paintEditHits();
   paintPeople();
   paintPersonSheet();
+  if (!freeOn()) autoPlaced = false;
+  placeMeIfNeeded();
 }
 
 function onPeerData(id, m) {
@@ -485,7 +489,8 @@ function buildModel(now, key) {
   }
   return {
     key, people, share, focus: !!S.state.focus, speakerId: S.speakerId,
-    topic: S.state.topic || '', show: S.state.show || 'キャラ会議', caption, captionsOn: S.captionsOn
+    topic: S.state.topic || '', show: S.state.show || 'キャラ会議', caption, captionsOn: S.captionsOn,
+    pos: posMap(), z: S.state.z || {}
   };
 }
 
@@ -504,9 +509,10 @@ function showMeeting() {
       <canvas id="stage" width="${W}" height="${H}"></canvas>
       <div class="overlay" id="overlay">
         <div id="edits"></div>
-        <div class="hov" id="hov" hidden><span class="gp" id="grip" title="ドラッグして並べ替え">${GRIP_SVG}</span>
-          <div class="seg" id="seg">${['L', 'M', 'S'].map((z) => `<button type="button" data-size="${z}">${SIZE_LABEL[z]}</button>`).join('')}</div></div>
-        <div class="toast2" id="dragtoast" hidden>${icon('info')}並びは全員に反映されます</div>
+        <div class="hov" id="hov" hidden><span class="gp" id="grip" title="ドラッグして動かす">${GRIP_SVG}</span>
+          <div class="seg" id="seg">${['L', 'M', 'S'].map((z) => `<button type="button" data-size="${z}">${SIZE_LABEL[z]}</button>`).join('')}</div>
+          <button type="button" class="rs" id="b-reset-pos" data-reset hidden>並べ直す</button></div>
+        <div class="toast2" id="dragtoast" hidden>${icon('info')}置き場所は全員に反映されます</div>
         <div class="frame"></div>
       </div>
     </div></div>
@@ -671,16 +677,69 @@ function toStage(ev) {
 }
 function layoutMode() { return S.state.sharer ? 'share' : S.state.focus ? 'focus' : 'row'; }
 function personAt(pt, exceptId) {
-  let best = null, bestD = Infinity;
+  // 重なっているときは、前に描かれている人（z が大きい人）を選ぶ
+  const z = S.state.z || {};
+  let best = null, bestZ = -Infinity, bestD = Infinity;
   S.stage.anim.forEach((a, id) => {
     if (id === exceptId || !a.target) return;
     const L = a.target, h = L.w * 0.5625, top = H - L.bottom - h;
     if (Math.abs(pt.x - L.x) < L.w * 0.25 && pt.y > top + h * 0.07 && pt.y < H - L.bottom) {
-      const d = Math.abs(pt.x - L.x);
-      if (d < bestD) { bestD = d; best = id; }
+      const d = Math.abs(pt.x - L.x), zz = Number(z[id]) || 0;
+      if (zz > bestZ || (zz === bestZ && d < bestD)) { bestZ = zz; bestD = d; best = id; }
     }
   });
   return best;
+}
+
+// ---- 自由な置き場所 ----
+function posMap() {
+  const p = S.state.pos;
+  const out = {};
+  if (p && typeof p === 'object') Object.keys(p).forEach((id) => { const q = cleanPos(p[id]); if (q) out[id] = q; });
+  return out;
+}
+function freeOn() { return layoutMode() === 'row' && Object.keys(posMap()).length > 0; }
+// 動かした場所を、全員に。初めて動かしたときは、ほかの人も今の場所のまま残す
+function commitDrag(d) {
+  const patch = {};
+  const pos = posMap();
+  if (!Object.keys(pos).length) {
+    S.stage.anim.forEach((a, id) => { if (a.target) patch[`pos/${id}`] = { x: a.target.x / W, y: (H - a.target.bottom) / H }; });
+  }
+  const q = cleanPos({ x: d.ax / W, y: d.ay / H });
+  patch[`pos/${d.id}`] = q;
+  patch[`z/${d.id}`] = Date.now();
+  // 自分の画面には、すぐ出す（返事を待つと、一瞬もとの場所へ戻って見える）
+  const np = Object.assign({}, S.state.pos || {});
+  Object.keys(patch).forEach((k) => { if (k.startsWith('pos/')) np[k.slice(4)] = patch[k]; });
+  S.state = Object.assign({}, S.state, { pos: np, z: Object.assign({}, S.state.z || {}, { [d.id]: patch[`z/${d.id}`] }) });
+  const a = S.stage.anim.get(d.id);
+  if (a) { a.x = q.x * W; a.bottom = H - q.y * H; }
+  S.room.setState(patch);
+}
+function bringFront(id) {
+  const t = Date.now();
+  S.state = Object.assign({}, S.state, { z: Object.assign({}, S.state.z || {}, { [id]: t }) });
+  S.room.setState({ [`z/${id}`]: t });
+}
+function resetLayout() {
+  S.state = Object.assign({}, S.state, { pos: null, z: null });
+  S.room.setState({ pos: null, z: null });
+  paintPersonSheet();
+  paintPeople();
+}
+// 自由な置き場所のときに後から入った人は、空いているところに自分で置く（全員の画面で同じ場所になる手順）
+let autoPlaced = false;
+function placeMeIfNeeded() {
+  if (!S.room || S.screen !== 'meet' || autoPlaced) return;
+  const pos = posMap();
+  if (!freeOn() || pos[S.myId]) return;
+  const sizes = S.state.sizes || {};
+  const people = orderedIds().map((id) => ({ id, size: sizes[id] || 'L' }));
+  const L = computeLayout(people, 'row', '', pos).get(S.myId);
+  if (!L) return;
+  autoPlaced = true;
+  S.room.setState({ [`pos/${S.myId}`]: { x: L.x / W, y: (H - L.bottom) / H } });
 }
 function nearestSlot(pt, exceptId) {
   let best = null, bestD = Infinity;
@@ -702,6 +761,7 @@ function showHover(id) {
   hov.style.top = `${H - L.bottom - h + h * 0.06}px`;
   const size = (S.state.sizes || {})[id] || 'L';
   $$('#seg button').forEach((b) => b.classList.toggle('on', b.dataset.size === size));
+  $('#b-reset-pos').hidden = !freeOn();
   hov.hidden = false;
 }
 
@@ -712,6 +772,7 @@ function setupStagePointer() {
     if (tapId) { const id = tapId; tapId = null; openPersonSheet(id); return; }
     const e = ev.target.closest('[data-edit]');
     if (e) { startInlineEdit(e.dataset.edit); return; }
+    if (ev.target.closest('[data-reset]')) { resetLayout(); showHover(null); return; }
     const sz = ev.target.closest('[data-size]');
     if (sz && hover) {
       S.room.setState({ [`sizes/${hover}`]: sz.dataset.size });
@@ -723,7 +784,10 @@ function setupStagePointer() {
     const pt = toStage({ clientX: cx, clientY: cy });
     if (dragStart && !drag) {
       if (Math.hypot(cx - dragStart.cx, cy - dragStart.cy) > 6) {
-        drag = { id: dragStart.id, px: pt.x, py: pt.y, targetId: null };
+        // つかんだ場所と、絵の基準（真ん中の下の端）との差を覚えておく（絵が指に飛びつかないように）
+        const a = S.stage.anim.get(dragStart.id), L = a && a.target;
+        const p0 = toStage({ clientX: dragStart.cx, clientY: dragStart.cy });
+        drag = { id: dragStart.id, px: pt.x, py: pt.y, gx: L ? p0.x - L.x : 0, gy: L ? p0.y - (H - L.bottom) : 0, ax: 0, ay: 0 };
         $('#hov').hidden = true;
         document.body.classList.add('dragging');
         dbg('drag', `開始 ${personName(drag.id)}`);
@@ -731,7 +795,8 @@ function setupStagePointer() {
     }
     if (!drag) return false;
     drag.px = pt.x; drag.py = pt.y;
-    drag.targetId = nearestSlot(pt, drag.id);
+    drag.ax = Math.min(POS_X[1] * W, Math.max(POS_X[0] * W, pt.x - drag.gx));
+    drag.ay = Math.min(POS_Y[1] * H, Math.max(POS_Y[0] * H, pt.y - drag.gy));
     const t = $('#dragtoast');
     t.hidden = false;
     t.style.left = `${Math.max(20, Math.min(W - 420, pt.x - 560))}px`;
@@ -751,7 +816,7 @@ function setupStagePointer() {
     if (ev.pointerType === 'touch') return;   // 指はタッチイベントで扱う
     tapId = null;
     if (ev.button !== 0 || layoutMode() !== 'row') return;
-    if (ev.target.closest('[data-size]') || ev.target.closest('[data-edit]') || ev.target.closest('.inline-edit')) return;
+    if (ev.target.closest('[data-size]') || ev.target.closest('[data-edit]') || ev.target.closest('[data-reset]') || ev.target.closest('.inline-edit')) return;
     const pt = toStage(ev);
     const id = ev.target.closest('#grip') ? hover : personAt(pt);
     if (!id) return;
@@ -761,11 +826,8 @@ function setupStagePointer() {
   const end = (ev) => {
     if (ev && ev.pointerType === 'touch') return;   // 指はタッチイベントで扱う
     const tapped = ev && ev.type === 'pointerup' && dragStart && dragStart.touch && !drag ? dragStart.id : null;
-    if (drag && drag.targetId) {
-      const ord = orderedIds();
-      const i = ord.indexOf(drag.id), j = ord.indexOf(drag.targetId);
-      if (i >= 0 && j >= 0) { [ord[i], ord[j]] = [ord[j], ord[i]]; S.room.setState({ order: ord }); }
-    }
+    if (drag && ev && ev.type === 'pointerup') commitDrag(drag);
+    else if (dragStart && !drag && ev && ev.type === 'pointerup') bringFront(dragStart.id);
     drag = null; dragStart = null;
     $('#dragtoast').hidden = true;
     document.body.classList.remove('dragging');
@@ -802,12 +864,9 @@ function setupStagePointer() {
     if (ev.cancelable) ev.preventDefault();
     dbg('touch', ev.type);
     const tapped = ev.type === 'touchend' && !drag ? dragStart.id : null;
-    const moved = drag ? `${personName(drag.id)} → ${drag.targetId ? personName(drag.targetId) : '（移る先なし）'}` : '';
-    if (ev.type === 'touchend' && drag && drag.targetId) {
-      const ord = orderedIds();
-      const i = ord.indexOf(drag.id), j = ord.indexOf(drag.targetId);
-      if (i >= 0 && j >= 0) { [ord[i], ord[j]] = [ord[j], ord[i]]; S.room.setState({ order: ord }); }
-    }
+    const moved = drag ? `${personName(drag.id)} → (${Math.round(drag.ax)}, ${Math.round(drag.ay)})` : '';
+    if (ev.type === 'touchend' && drag) commitDrag(drag);
+    if (tapped) bringFront(tapped);
     if (moved) dbg('drag', `${ev.type === 'touchend' ? '終わり' : '取り消し'} ${moved}`);
     touchId = null; drag = null; dragStart = null;
     $('#dragtoast').hidden = true;
@@ -839,6 +898,7 @@ function onPersonCtl(ev) {
   if (b.dataset.size) setSize(b.dataset.id, b.dataset.size);
   else if (b.dataset.move) movePerson(b.dataset.id, Number(b.dataset.move));
   else if (b.dataset.edit) editDialog(b.dataset.edit);
+  else if (b.hasAttribute('data-reset')) resetLayout();
 }
 function setupPeople() { $('#people').addEventListener('click', onPersonCtl); }
 function paintPeople() {
@@ -846,9 +906,9 @@ function paintPeople() {
   if (!box || S.screen !== 'meet') return;
   const ids = orderedIds();
   const mode = layoutMode();
-  const note = mode === 'row' ? '並びと大きさは全員に反映されます' : mode === 'focus' ? '「話す人を大きく」のあいだは、大きさを替えられません' : '画面共有のあいだは、大きさを替えられません';
+  const note = mode === 'row' ? (freeOn() ? '舞台の上のキャラは、ドラッグで好きな場所に置けます。「並べ直す」で横一列に戻ります' : '並びと大きさは全員に反映されます。舞台の上のキャラは、ドラッグで好きな場所に置けます') : mode === 'focus' ? '「話す人を大きく」のあいだは、大きさを替えられません' : '画面共有のあいだは、大きさを替えられません';
   box.innerHTML = `<div class="pp-h"><span>参加者 ${ids.length}人</span>
-      <span class="pp-ed"><button type="button" data-id="-" data-edit="show">番組名</button><button type="button" data-id="-" data-edit="topic">お題</button></span></div>
+      <span class="pp-ed">${freeOn() ? '<button type="button" data-id="-" data-reset>並べ直す</button>' : ''}<button type="button" data-id="-" data-edit="show">番組名</button><button type="button" data-id="-" data-edit="topic">お題</button></span></div>
     ${ids.map((id, i) => `<div class="pp-r"><span class="pp-n">${esc(personName(id))}${id === S.myId ? '<i>あなた</i>' : ''}</span>${personCtl(id, i, ids.length)}</div>`).join('')}
     <div class="pp-note">${note}</div>`;
 }
@@ -874,7 +934,7 @@ function paintPersonSheet() {
     <h2>${esc(personName(sheetId))}</h2>
     <div class="lead">並びと大きさは全員に反映されます</div>
     <div class="pp-r">${personCtl(sheetId, i, ids.length)}</div>
-    <div class="acts" style="margin-top:20px"><button type="button" class="btn pri" id="b-pok">閉じる</button></div>`;
+    <div class="acts" style="margin-top:20px">${freeOn() ? '<button type="button" class="btn" data-id="-" data-reset>並べ直す</button>' : ''}<button type="button" class="btn pri" id="b-pok">閉じる</button></div>`;
 }
 function editDialog(kind) {
   const topic = kind === 'topic';

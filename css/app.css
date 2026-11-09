@@ -107,6 +107,8 @@ body.meeting{background:#090c15;overflow:hidden}
 .seg button{width:40px;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:17px;font-weight:700;color:#c6ccdb}
 .seg button.on{background:var(--ac);color:#0f1422}
 .seg button:not(.on):hover{background:rgba(255,255,255,.08)}
+.hov .rs{height:40px;padding:0 14px;border-radius:12px;background:rgba(12,16,30,.86);border:1px solid rgba(255,255,255,.18);font-size:17px;font-weight:700;color:#c6ccdb;white-space:nowrap}
+.hov .rs:hover{background:rgba(40,48,72,.95)}
 .hov .nmtag{height:40px;padding:0 14px;border-radius:12px;background:rgba(12,16,30,.86);border:1px solid rgba(255,255,255,.18);display:flex;align-items:center;font-size:17px;font-weight:700;white-space:nowrap}
 .dragging,.dragging *{cursor:grabbing !important}
 .toast2{position:absolute;z-index:40;display:flex;align-items:center;gap:10px;height:46px;padding:0 20px;border-radius:23px;background:rgba(12,16,30,.86);border:1px solid rgba(134,168,255,.4);font-size:19px;font-weight:700;color:#dfe6ff;white-space:nowrap;pointer-events:none}
