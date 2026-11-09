@@ -33,8 +33,8 @@ export function builtinDefaults() {
 
 // 声の設定を整える（範囲の外の値・欠けた値を直す）
 export function cleanVoice(v) {
-  const n = E.normalize({ pitch: v && v.pitch, tone: v && v.tone, fx: v && v.fx });
-  return { pitch: n.pitch, tone: n.tone, fx: n.fx };
+  const n = E.normalize({ pitch: v && v.pitch, tone: v && v.tone, fx: v && v.fx, eq: v && v.eq });
+  return { pitch: n.pitch, tone: n.tone, fx: n.fx, eq: n.eq };
 }
 
 // 整えた6人分の初期値（足りない分は既定）
@@ -138,6 +138,11 @@ export function voiceEditor(root, voice, onChange, opts = {}) {
         <label class="ve-sl" style="margin-top:16px"><div class="t"><span>音色</span><b data-o="tone"></b></div>
           <input type="range" data-k="tone" min="${E.TONE_MIN}" max="${E.TONE_MAX}" step="1">
           <div class="ends"><span>こもる</span><span>明るい</span></div></label>
+      </div>
+      <div class="box eqb"><div class="eq-h"><span>イコライザー</span><button type="button" class="eq-r" data-eqreset>元に戻す</button></div>${E.EQ_BANDS.map((b, i) => `
+        <label class="fxd-r"><span class="fxd-l">${esc(b.label)}<i class="eq-f">${b.f >= 1000 ? `${b.f / 1000}k` : b.f}Hz</i></span>
+          <input type="range" data-eq="${i}" min="${E.EQ_MIN}" max="${E.EQ_MAX}" step="1" aria-label="イコライザーの${esc(b.label)}">
+          <b class="fxd-v" data-eqv="${i}"></b></label>`).join('')}
       </div></div>
       <div class="ve-c2"><div class="lbl">エフェクト</div>
         <div class="box fxs">${E.FX_LIST.map((f) => `
@@ -155,6 +160,12 @@ export function voiceEditor(root, voice, onChange, opts = {}) {
       </div>
     </div>`;
   function paint() {
+    E.EQ_BANDS.forEach((b, i) => {
+      const inp = root.querySelector(`input[data-eq="${i}"]`);
+      inp.value = v.eq[i];
+      inp.style.setProperty('--p', pct(v.eq[i], E.EQ_MIN, E.EQ_MAX) + '%');
+      root.querySelector(`[data-eqv="${i}"]`).textContent = `${sgn(v.eq[i])} dB`;
+    });
     ['pitch', 'tone'].forEach((k) => {
       const inp = root.querySelector(`input[data-k="${k}"]`);
       inp.value = v[k];
@@ -186,6 +197,7 @@ export function voiceEditor(root, voice, onChange, opts = {}) {
   root.addEventListener('input', (ev) => {
     const t = ev.target;
     if (t.dataset.k) v[t.dataset.k] = Number(t.value);
+    if (t.dataset.eq != null) v.eq[Number(t.dataset.eq)] = Number(t.value);
     if (t.dataset.dk) {
       const e = v.fx[t.closest('[data-fxd]').dataset.fxd];
       if (t.dataset.dk === 'amt') e.amt = Number(t.value); else e[t.dataset.dk] = Number(t.value);
@@ -196,6 +208,12 @@ export function voiceEditor(root, voice, onChange, opts = {}) {
     onChange(cleanVoice(v));
   });
   root.addEventListener('click', (ev) => {
+    if (ev.target.closest('[data-eqreset]')) {
+      v.eq = E.EQ_BANDS.map(() => 0);
+      paint();
+      onChange(cleanVoice(v));
+      return;
+    }
     const tg = ev.target.closest('.fxd-t');
     if (tg) {
       const box = root.querySelector(`[data-fxd="${tg.dataset.fxt}"]`);

@@ -198,6 +198,13 @@ body:not(.meeting) .toast{bottom:32px}
 /* 声の調整（管理画面・会議の中で同じ部品） */
 .ve-cols{display:flex;gap:26px}
 .ve-c1{width:360px;flex:none}
+/* イコライザー（声の高さ・音色の下） */
+.eqb{margin-top:14px;padding:10px 16px 8px}
+.eq-h{display:flex;align-items:center;justify-content:space-between;font-size:14px;margin-bottom:2px}
+.eq-r{height:32px;padding:0 10px;border-radius:8px;border:1px solid var(--line);font-size:12.5px;color:var(--sub)}
+.eqb .fxd-l{width:96px}
+.eq-f{font-style:normal;font-size:11px;color:var(--mute);margin-left:6px}
+.eqb .fxd-v{width:56px}
 .ve-c2{flex:1;min-width:0}
 .ve-c2 .lbl{margin:0 2px 8px}
 .box{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
@@ -307,6 +314,7 @@ input[type=range]:focus-visible{outline:2px solid var(--ac);outline-offset:2px;b
   .acts .btn{flex:1 1 auto;width:auto !important;padding:0 14px}
   .ve-cols{flex-direction:column;gap:16px}
   .ve-c1{width:auto}
+  .eq-r{height:44px;min-width:88px;font-size:13px}
   input[type=range]{height:36px}
   input[type=range]::-webkit-slider-thumb{width:26px;height:26px;margin-top:-10px}
   .fx{flex-wrap:wrap;height:auto;padding:4px 0 6px;gap:0 12px}

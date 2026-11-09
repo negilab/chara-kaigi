@@ -136,6 +136,20 @@
     return { id: makeId(), name: name || '新しいキャラ', pitch: 0, tone: 0, fx: defaultFx(), art: '' };
   }
 
+  // イコライザー（5つの帯域。それぞれ ±12dB、既定 0）
+  var EQ_BANDS = [
+    { f: 100, label: '低音' },
+    { f: 300, label: '中低音' },
+    { f: 1000, label: '中音' },
+    { f: 3000, label: '中高音' },
+    { f: 8000, label: '高音' }
+  ];
+  var EQ_MIN = -12, EQ_MAX = 12;
+  function cleanEq(a) {
+    a = Array.isArray(a) ? a : [];
+    return EQ_BANDS.map(function (b, i) { return Math.round(clamp(a[i] == null ? 0 : a[i], EQ_MIN, EQ_MAX)); });
+  }
+
   // 値を決まった範囲に収めた写しを返す
   function normalize(c) {
     c = c || {};
@@ -145,6 +159,7 @@
       pitch: Math.round(clamp(c.pitch, PITCH_MIN, PITCH_MAX)),
       tone: Math.round(clamp(c.tone, TONE_MIN, TONE_MAX)),
       fx: defaultFx(),
+      eq: cleanEq(c.eq),
       art: isArtId(c.art) ? c.art : ''
     };
     var src = c.fx || {};
@@ -563,7 +578,14 @@
     // つなぐ順: 高さ → 音色 → 各エフェクト → 音割れ止め
     input.connect(pitchSt.input);
     pitchSt.output.connect(low); low.connect(high); high.connect(muffle);
+    // イコライザー（音色のあと、エフェクトの前）。0dB のときは素通しと同じ
+    var eqs = EQ_BANDS.map(function (b) {
+      var q = ctx.createBiquadFilter();
+      q.type = 'peaking'; q.frequency.value = b.f; q.Q.value = 1; q.gain.value = 0;
+      return q;
+    });
     var prev = muffle;
+    eqs.forEach(function (q) { prev.connect(q); prev = q; });
     var order = ['distortion', 'robot', 'radio', 'phaser', 'flanger', 'chorus', 'tremolo', 'echo', 'reverb'];
     order.forEach(function (k) { prev.connect(fx[k].input); prev = fx[k].output; });
     prev.connect(limiter);
@@ -585,6 +607,8 @@
         setP(ctx, low.gain, -t * 0.5);
         var nyq = ctx.sampleRate / 2;
         setP(ctx, muffle.frequency, t < 0 ? Math.min(nyq, 20000 * Math.pow(2, t * 0.55)) : nyq);
+        var eqv = s ? s.eq : cleanEq(null);
+        eqs.forEach(function (q, i) { setP(ctx, q.gain, eqv[i]); });
         FX_LIST.forEach(function (f) {
           var e = s ? s.fx[f.key] : null;
           fx[f.key].set(!!(e && e.on), e ? e.amt / 100 : 0.5, e || null);
@@ -605,6 +629,7 @@
   root.VoiceChangerEngine = {
     FX_LIST: FX_LIST,
     FX_DETAIL: FX_DETAIL,
+    EQ_BANDS: EQ_BANDS, EQ_MIN: EQ_MIN, EQ_MAX: EQ_MAX,
     ECHO_BUTTON: ECHO_BUTTON,
     normalizeEchoButton: normalizeEchoButton,
     createHoldEcho: createHoldEcho,
