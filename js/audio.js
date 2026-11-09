@@ -5,6 +5,10 @@ import { E } from './common.js';
 export const SND_KEYS = { mic: 'ck-mic', ns: 'ck-ns', gain: 'ck-micgain', spk: 'ck-spk', remote: 'ck-remotevol' };
 // BGM・効果音の大きさの基準（つまみの値にこれを掛ける。前は 1 で、大きすぎたため 1/3 に）
 export const BGM_BASE = 1 / 3, SE_BASE = 1 / 3;
+// 自分の端末で鳴らすときは、送る大きさよりさらに小さく。ブラウザのエコー消し（AEC）は、この端末から出る音を
+// 「エコーの元」として聞いており、大きな BGM が出ていると、ヘッドホンでも自分の声を消しにかかることがあるため（推測）。
+// 送る音・録画の大きさは変えない
+export const LOCAL_LEVEL = 0.4;
 export function getPref(k, d) { try { const v = localStorage.getItem(k); return v == null || v === '' ? d : v; } catch (e) { return d; } }
 export function setPref(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) { /* なし */ } }
 
@@ -174,8 +178,11 @@ export class LocalMedia {
     src.connect(g);
     g.connect(this.dest);
     g.connect(this.recMix);
-    g.connect(ac.destination);
-    this.bgm = { src, g };
+    const local = ac.createGain();
+    local.gain.value = LOCAL_LEVEL;
+    g.connect(local);
+    local.connect(ac.destination);
+    this.bgm = { src, g, local };
   }
   // 効果音: BGM と同じ通り道（声の加工・口の動き・字幕を通らずに、送る音・録画の音・自分のスピーカーへ）。重ねて鳴らせる
   playSe(buffer, vol) {
@@ -188,14 +195,17 @@ export class LocalMedia {
     src.connect(g);
     g.connect(this.dest);
     g.connect(this.recMix);
-    g.connect(ac.destination);
-    src.onended = () => { try { g.disconnect(); } catch (e) { /* なし */ } };
+    const local = ac.createGain();
+    local.gain.value = LOCAL_LEVEL;
+    g.connect(local);
+    local.connect(ac.destination);
+    src.onended = () => { try { g.disconnect(); local.disconnect(); } catch (e) { /* なし */ } };
     src.start();
   }
   setBgmVolume(vol) { if (this.bgm) this.bgm.g.gain.setTargetAtTime(vol * BGM_BASE, this.ac.currentTime, 0.03); }
   stopBgm() {
     if (!this.bgm) return;
-    try { this.bgm.src.disconnect(); this.bgm.g.disconnect(); } catch (e) { /* なし */ }
+    try { this.bgm.src.disconnect(); this.bgm.g.disconnect(); this.bgm.local.disconnect(); } catch (e) { /* なし */ }
     this.bgm = null;
   }
 

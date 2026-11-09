@@ -1078,10 +1078,14 @@ function startCaptions() {
   r.onend = () => {
     recog = null;
     dbg('sr', `end${lastErr ? ` (${lastErr})` : ''}`);
-    // 何も聞き取らずに 1.5 秒以内で終わるのが 5 回続いたら、繰り返すのをやめる
+    // 何も聞き取らずに 1.5 秒以内で終わるのが続いたら、間をあけて繰り返す（BGM などで一時的に聞き取れないこともあるので、やめはしない）。
+    // 聞き取れたら（onresult）数え直す。使えない端末（not-allowed など）は onerror で止める
     if (!heard && performance.now() - startedAt < 1500) srQuick++;
-    if (srQuick >= 5 && !srBlocked) srStop(`字幕を止めました。この端末では音声認識がすぐに終わってしまいます［${lastErr || 'end'}］`);
-    if (srWant && !srBlocked && S.screen === 'meet') setTimeout(startCaptions, 300 + srQuick * 700);
+    if (srQuick === 5) {
+      const msg = `字幕がうまく作れていません。少しずつ間をあけて試し続けます［${lastErr || 'end'}］`;
+      if (!srShown.has(msg)) { srShown.add(msg); toast(msg, 5000); }
+    }
+    if (srWant && !srBlocked && S.screen === 'meet') setTimeout(startCaptions, 300 + Math.min(srQuick, 14) * 700);
   };
   try { r.start(); } catch (e) {
     recog = null;
