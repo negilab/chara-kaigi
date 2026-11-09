@@ -139,7 +139,7 @@ export function voiceEditor(root, voice, onChange, opts = {}) {
           <input type="range" data-k="tone" min="${E.TONE_MIN}" max="${E.TONE_MAX}" step="1">
           <div class="ends"><span>こもる</span><span>明るい</span></div></label>
       </div>
-      <div class="box eqb"><div class="eq-h"><span>イコライザー</span><button type="button" class="eq-r" data-eqreset>元に戻す</button></div>${E.EQ_BANDS.map((b, i) => `
+      <div class="box eqb"><div class="eq-h"><span>イコライザー</span><button type="button" class="eq-r" data-eqreset>元に戻す</button></div>${E.EQ_BANDS.map((b, i) => [b, i]).reverse().map(([b, i]) => `
         <label class="fxd-r"><span class="fxd-l">${esc(b.label)}<i class="eq-f">${b.f >= 1000 ? `${b.f / 1000}k` : b.f}Hz</i></span>
           <input type="range" data-eq="${i}" min="${E.EQ_MIN}" max="${E.EQ_MAX}" step="1" aria-label="イコライザーの${esc(b.label)}">
           <b class="fxd-v" data-eqv="${i}"></b></label>`).join('')}
