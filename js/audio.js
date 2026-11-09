@@ -1,6 +1,11 @@
 // 自分のマイクとカメラ。声はここで加工してから送る。口の開きは加工前の声の大きさで決める。
 import { E } from './common.js';
 
+// 「音の設定」で選んだもの（この端末に覚える）
+export const SND_KEYS = { mic: 'ck-mic', ns: 'ck-ns', gain: 'ck-micgain', spk: 'ck-spk', remote: 'ck-remotevol' };
+export function getPref(k, d) { try { const v = localStorage.getItem(k); return v == null || v === '' ? d : v; } catch (e) { return d; } }
+export function setPref(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) { /* なし */ } }
+
 export class LocalMedia {
   constructor() {
     this.ac = null;
@@ -8,26 +13,53 @@ export class LocalMedia {
     this.video = null;      // カメラの映像（顔の読み取り用。画面には出さない）
     this.hasCamera = false;
     this.micOn = true;
+    this.monitorOn = false;
     this.buf = new Float32Array(1024);
+    this.micId = getPref(SND_KEYS.mic, '');          // 選んだマイク（無ければ既定のマイク）
+    this.ns = getPref(SND_KEYS.ns, '1') !== '0';     // 雑音を抑える（今までどおり オン）
+    this.inGainV = Math.min(2, Math.max(0, Number(getPref(SND_KEYS.gain, '100')) / 100 || 0));
+  }
+
+  // マイクを開くときの条件（今までと同じ。雑音を抑える・選んだマイクだけ変えられる）
+  audioConstraints() {
+    const c = { echoCancellation: this.ns, noiseSuppression: this.ns, autoGainControl: true };
+    if (this.micId) c.deviceId = { exact: this.micId };
+    return c;
   }
 
   // マイクとカメラを開く。カメラが無い・許可されないときはマイクだけ
   async open() {
-    const audio = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+    const get = async (audio) => {
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({ audio, video: { width: 640, height: 360, frameRate: 15 } });
+        this.hasCamera = s.getVideoTracks().length > 0;
+        return s;
+      } catch (e) {
+        this.hasCamera = false;
+        return navigator.mediaDevices.getUserMedia({ audio });
+      }
+    };
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio, video: { width: 640, height: 360, frameRate: 15 } });
-      this.hasCamera = this.stream.getVideoTracks().length > 0;
+      this.stream = await get(this.audioConstraints());
     } catch (e) {
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio });
-      this.hasCamera = false;
+      // 前に選んだマイクが無いときは、既定のマイクで開き直す
+      if (!this.micId) throw e;
+      this.micId = '';
+      this.stream = await get(this.audioConstraints());
     }
     const ac = this.ac = new AudioContext({ latencyHint: 'interactive' });
-    const src = ac.createMediaStreamSource(new MediaStream(this.stream.getAudioTracks()));
+    const spk = getPref(SND_KEYS.spk, '');
+    if (spk && typeof ac.setSinkId === 'function') ac.setSinkId(spk).catch(() => {});
+    // マイク → マイクの音量 → （口の動き・加工）。マイクを替えても、この後ろはそのまま（送る音の通り道は変わらない）
+    this.src = ac.createMediaStreamSource(new MediaStream(this.stream.getAudioTracks()));
+    this.inGain = ac.createGain();
+    this.inGain.gain.value = this.inGainV;
+    this.src.connect(this.inGain);
     this.analyser = ac.createAnalyser();
     this.analyser.fftSize = 1024;
-    src.connect(this.analyser);
+    this.inGain.connect(this.analyser);
     this.engine = E.create(ac);
-    src.connect(this.engine.input);
+    this.inGain.connect(this.engine.input);
     this.muteGain = ac.createGain();
     this.engine.output.connect(this.muteGain);
     this.dest = ac.createMediaStreamDestination();
@@ -79,7 +111,35 @@ export class LocalMedia {
   }
 
   setMonitor(on) {
+    this.monitorOn = !!on;
     if (this.monitor) this.monitor.gain.setTargetAtTime(on ? 1 : 0, this.ac.currentTime, 0.02);
+  }
+
+  // ---- 音の設定 ----
+  // マイクを替える・雑音を抑えるを切り替える: マイクを開き直して、同じ場所につなぎ直す（送る音のトラックは同じなので、つなぎ直しは要らない）
+  async switchMic(opts) {
+    if (opts && opts.deviceId !== undefined) this.micId = opts.deviceId;
+    if (opts && opts.ns !== undefined) this.ns = !!opts.ns;
+    const s = await navigator.mediaDevices.getUserMedia({ audio: this.audioConstraints() });
+    this.stream.getAudioTracks().forEach((t) => { t.stop(); this.stream.removeTrack(t); });
+    s.getAudioTracks().forEach((t) => this.stream.addTrack(t));
+    try { this.src.disconnect(); } catch (e) { /* なし */ }
+    this.src = this.ac.createMediaStreamSource(new MediaStream(s.getAudioTracks()));
+    this.src.connect(this.inGain);
+    setPref(SND_KEYS.mic, this.micId);
+    setPref(SND_KEYS.ns, this.ns ? '1' : '0');
+  }
+  // いま使っているマイクの名前（deviceId）
+  currentMicId() { const t = this.stream && this.stream.getAudioTracks()[0]; const s = t && t.getSettings ? t.getSettings() : {}; return s.deviceId || this.micId || ''; }
+  setInputGain(v) {
+    this.inGainV = v;
+    if (this.inGain) this.inGain.gain.setTargetAtTime(v, this.ac.currentTime, 0.02);
+    setPref(SND_KEYS.gain, Math.round(v * 100));
+  }
+  // 自分の端末のスピーカー（BGM・効果音・自分の声を聞く）。ほかの人の声の出口は main.js で <audio> ごとに
+  async setSpeaker(id) {
+    if (this.ac && typeof this.ac.setSinkId === 'function') await this.ac.setSinkId(id || '');
+    setPref(SND_KEYS.spk, id || '');
   }
 
   // 加工前の声の大きさ（RMS）。マイクを切っているときは 0

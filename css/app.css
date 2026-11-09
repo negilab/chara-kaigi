@@ -193,6 +193,15 @@ body:not(.meeting) .toast{bottom:32px}
 .se-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .se-grid .btn{height:56px;padding:0 10px;font-size:15px}
 #se-vol{height:44px;margin:0}
+/* 音の設定 */
+.snd-sel{height:48px;font-size:14px;padding:0 12px;-webkit-appearance:auto;appearance:auto}
+.snd-meter{margin:12px 0 6px}
+.snd-l{margin-top:14px}
+.snd-r{height:44px;margin:0}
+.snd-sw{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;margin-top:10px;font-size:14px}
+.snd-sw .sw{position:relative}
+.snd-sw .sw::before{content:"";position:absolute;inset:-12px -6px}
+.snd-note{font-size:12.5px;color:var(--mute);line-height:1.6;margin:2px 2px 4px}
 .vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0 0 0 0);pointer-events:none}
 #bgm-vol{height:44px;margin:0}
 .bgm-loop{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;margin:6px 0 18px;font-size:14px}

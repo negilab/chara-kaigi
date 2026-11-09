@@ -6,7 +6,7 @@ import {
 import { getDb, isLocalMode } from './db.js';
 import { Room, createRoom, roomInfo, cleanupOldRooms, newMemberId, validRoomId, MAX_MEMBERS } from './room.js';
 import { Mesh } from './mesh.js';
-import { LocalMedia } from './audio.js';
+import { LocalMedia, SND_KEYS, getPref, setPref } from './audio.js';
 import { createStage, W, H, SIZE_LABEL, computeLayout, cleanPos, POS_X, POS_Y } from './stage.js';
 import { initFace, detectFace } from './face.js';
 
@@ -301,10 +301,6 @@ function openVoiceDialog(withGrid) {
     <div class="lead">${withGrid ? '選んだキャラの絵と声に替わります。' : ''}声の調整は保存されません。次の会議では初めの声に戻ります。</div>
     ${withGrid ? `<div class="swapgrid" id="swapgrid">${CHARS.map((c) => charCard(c, c.id === S.char)).join('')}</div>` : ''}
     <div id="ve"></div>
-    <div class="box mg"><label class="ve-sl"><div class="t"><span>口の反応</span></div>
-      <input type="range" id="in-mouth" min="0" max="100" step="1">
-      <div class="ends"><span>鈍い</span><span>敏感</span></div></label>
-      <div class="mg-n">キーボードの音などで口が動くときは、鈍いほうへ動かしてください。</div></div>
     <div class="acts" style="margin-top:22px">
       <div class="l">試しに聞くときは、ヘッドホンをつけてください。<br>スピーカーだと音が回って、ピーッと鳴ることがあります。</div>
       <button type="button" class="btn ghost" id="b-reset">初めの声に戻す</button>
@@ -312,10 +308,6 @@ function openVoiceDialog(withGrid) {
       <button type="button" class="btn pri" id="b-ok" style="width:120px">閉じる</button>
     </div>`, () => { if (S.media) S.media.setMonitor(false); }, true);
   const ed = voiceEditor($('#ve', scrim), S.voice, (v) => { S.voice = v; if (S.media) S.media.applyVoice(v); });
-  const mi = $('#in-mouth', scrim);
-  const paintMouth = () => { mi.value = S.mouth; mi.style.setProperty('--p', `${S.mouth}%`); };
-  paintMouth();
-  mi.addEventListener('input', () => { setMouth(Number(mi.value), true); paintMouth(); });
   $('#b-ok', scrim).addEventListener('click', () => closeDialog());
   $('#b-reset', scrim).addEventListener('click', () => {
     S.voice = cleanVoice(S.defaults[S.char]);
@@ -443,6 +435,7 @@ function onPeerTrack(id, track, stream) {
       document.body.appendChild(r.audio);
     }
     r.audio.srcObject = new MediaStream([track]);
+    applyRemoteAudio(r.audio);
     r.audio.play().catch(() => toast('音を出すには、画面をクリックしてください'));
     if (r.recSrc) { try { r.recSrc.disconnect(); } catch (e) { /* なし */ } }
     r.recSrc = S.media.addRemote(new MediaStream([track]));
@@ -547,12 +540,12 @@ function showMeeting() {
       ${ctl('c-mic', icon('mic'), 'マイク オン', 'on')}
       ${ctl('c-swap', icon('swap'), 'キャラを替える')}
       ${CAN_SHARE ? ctl('c-share', icon('share'), '画面共有') : ''}
-      ${ctl('c-cc', icon('cc'), '字幕 オン', 'on')}
       ${ctl('c-save', icon('save'), '文字起こし<wbr>を保存')}
       ${ctl('c-rec', '<span class="recdot"></span>', '録画')}
       ${ctl('c-echo', icon('echo'), 'エコー')}
       ${ctl('c-bgm', MUSIC_SVG, 'BGM')}
       ${ctl('c-se', SE_SVG, '効果音')}
+      ${ctl('c-snd', icon('sliders'), '音の設定')}
       <div class="sep"></div>
       ${ctl('c-leave', icon('leave'), '退室', 'leave')}
       <div class="bgmpill" id="bgmpill" hidden></div>
@@ -566,11 +559,11 @@ function showMeeting() {
   $('#c-mic').addEventListener('click', toggleMic);
   $('#c-swap').addEventListener('click', () => openVoiceDialog(true));
   if (CAN_SHARE) $('#c-share').addEventListener('click', () => (S.share ? stopShare() : startShare()));
-  $('#c-cc').addEventListener('click', () => { S.captionsOn = !S.captionsOn; paintBar(); });
   $('#c-save').addEventListener('click', () => { if (!saveTranscript()) toast('まだ発言がありません'); });
   $('#c-rec').addEventListener('click', () => (S.rec ? stopRec() : openRecDialog()));
   $('#c-bgm').addEventListener('click', openBgmDialog);
   $('#c-se').addEventListener('click', openSeDialog);
+  $('#c-snd').addEventListener('click', openSoundDialog);
   $('#c-leave').addEventListener('click', askLeave);
   setupEchoButton();
   setupStagePointer();
@@ -1405,6 +1398,104 @@ function paintBgmDialog() {
   $$('#bgm-list [data-bt]').forEach((b) => b.classList.toggle('on', !!cur && cur.title === BGM_TRACKS[Number(b.dataset.bt)].title));
 }
 
+// ---------- 音の設定 ----------
+const CAN_SINK = typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype;
+function remoteVol() { return Math.min(100, Math.max(0, Number(getPref(SND_KEYS.remote, '100')) || 0)); }
+// ほかの人の声の <audio> に、音量と出口（スピーカー）を当てる
+function applyRemoteAudio(el) {
+  el.volume = remoteVol() / 100;
+  const spk = getPref(SND_KEYS.spk, '');
+  if (CAN_SINK && spk) el.setSinkId(spk).catch(() => {});
+}
+function openSoundDialog() {
+  const m = S.media;
+  if (!m) return;
+  const sw = (id, on, label) => `<div class="snd-sw"><span id="${id}-l">${label}</span><button type="button" class="sw ${on ? 'on' : ''}" id="${id}" role="switch" aria-checked="${on}" aria-labelledby="${id}-l"></button></div>`;
+  const rng = (id, v, max, label, unit) => `<label class="lbl snd-l" for="${id}">${label} <b id="${id}-v">${v}${unit}</b></label>
+    <input type="range" class="snd-r" id="${id}" min="0" max="${max}" step="1" value="${v}" style="--p:${(v / max) * 100}%">`;
+  const scrim = openDialog(`
+    <button type="button" class="x" aria-label="閉じる">${icon('close')}</button>
+    <h2>音の設定</h2>
+    <label class="lbl" for="snd-mic">マイク</label>
+    <select class="input snd-sel" id="snd-mic"></select>
+    <div class="meter snd-meter" id="snd-meter">${METER_H.map((h) => `<i style="height:${30 + h * 2.6}%"></i>`).join('')}</div>
+    ${rng('snd-gain', Math.round(m.inGainV * 100), 200, 'マイクの音量', '%')}
+    ${sw('snd-ns', m.ns, '雑音を抑える')}
+    <label class="lbl" for="snd-spk" style="margin-top:14px">スピーカー</label>
+    ${CAN_SINK ? '<select class="input snd-sel" id="snd-spk"></select>' : '<div class="snd-note">この端末では選べません</div>'}
+    ${rng('snd-rv', remoteVol(), 100, '相手の声の音量', '%')}
+    <div class="box mg"><label class="ve-sl"><div class="t"><span>口の反応</span></div>
+      <input type="range" id="in-mouth" min="0" max="100" step="1">
+      <div class="ends"><span>鈍い</span><span>敏感</span></div></label>
+      <div class="mg-n">キーボードの音などで口が動くときは、鈍いほうへ動かしてください。</div></div>
+    ${sw('snd-mon', m.monitorOn, '自分の声を聞く')}
+    <div class="snd-note">ヘッドホンで聞いてください。スピーカーだと音が回ります</div>
+    ${sw('snd-cc', S.captionsOn, '字幕')}
+    <div class="acts" style="margin-top:18px"><button type="button" class="btn pri" id="b-sndok">閉じる</button></div>`, () => { cancelAnimationFrame(meterRaf); });
+  // マイクとスピーカーの一覧（名前は、マイクを許可したあとで読める）
+  const fill = async () => {
+    let list = [];
+    try { list = await navigator.mediaDevices.enumerateDevices(); } catch (e) { /* なし */ }
+    const mics = list.filter((d) => d.kind === 'audioinput');
+    const cur = m.currentMicId();
+    $('#snd-mic', scrim).innerHTML = (mics.length ? mics : [{ deviceId: '', label: '' }]).map((d, i) => `<option value="${esc(d.deviceId)}" ${d.deviceId === cur ? 'selected' : ''}>${esc(d.label || `マイク ${i + 1}`)}</option>`).join('');
+    if (CAN_SINK) {
+      const outs = list.filter((d) => d.kind === 'audiooutput');
+      const spk = getPref(SND_KEYS.spk, '');
+      $('#snd-spk', scrim).innerHTML = (outs.length ? outs : [{ deviceId: '', label: '' }]).map((d, i) => `<option value="${esc(d.deviceId)}" ${d.deviceId === spk ? 'selected' : ''}>${esc(d.label || `スピーカー ${i + 1}`)}</option>`).join('');
+    }
+  };
+  fill();
+  $('#snd-mic', scrim).addEventListener('change', async (ev) => {
+    try { await m.switchMic({ deviceId: ev.target.value }); toast('マイクを替えました'); } catch (e) { console.warn(e); toast('このマイクを使えません'); fill(); }
+  });
+  if (CAN_SINK) {
+    $('#snd-spk', scrim).addEventListener('change', async (ev) => {
+      const id = ev.target.value;
+      try {
+        await m.setSpeaker(id);
+        S.remote.forEach((r) => { if (r.audio) r.audio.setSinkId(id).catch(() => {}); });
+      } catch (e) { console.warn(e); toast('このスピーカーを使えません'); }
+    });
+  }
+  const bindRange = (id, unit, fn) => {
+    const r = $(`#${id}`, scrim);
+    r.addEventListener('input', () => {
+      const v = Number(r.value);
+      r.style.setProperty('--p', `${(v / Number(r.max)) * 100}%`);
+      $(`#${id}-v`, scrim).textContent = `${v}${unit}`;
+      fn(v);
+    });
+  };
+  bindRange('snd-gain', '%', (v) => m.setInputGain(v / 100));
+  bindRange('snd-rv', '%', (v) => { setPref(SND_KEYS.remote, v); S.remote.forEach((r) => { if (r.audio) r.audio.volume = v / 100; }); });
+  const toggle = (id, fn) => $(`#${id}`, scrim).addEventListener('click', (ev) => {
+    const b = ev.currentTarget;
+    const on = !b.classList.contains('on');
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', on);
+    fn(on);
+  });
+  toggle('snd-ns', async (on) => { try { await m.switchMic({ ns: on }); } catch (e) { console.warn(e); toast('切り替えられませんでした'); } });
+  toggle('snd-mon', (on) => m.setMonitor(on));
+  toggle('snd-cc', (on) => { S.captionsOn = on; paintBar(); });
+  // 口の反応（「声を調整」から移した。覚え方は同じ）
+  const mi = $('#in-mouth', scrim);
+  mi.value = S.mouth; mi.style.setProperty('--p', `${S.mouth}%`);
+  mi.addEventListener('input', () => { setMouth(Number(mi.value), true); mi.style.setProperty('--p', `${S.mouth}%`); });
+  $('#b-sndok', scrim).addEventListener('click', () => closeDialog());
+  // マイクの入力レベル
+  let meterRaf = 0;
+  const bars = $$('#snd-meter i', scrim);
+  const loop = () => {
+    const db = 20 * Math.log10(m.rms() + 1e-9);
+    const lit = Math.max(0, Math.min(bars.length, Math.round((db + 60) / 2.5)));
+    bars.forEach((b, i) => b.classList.toggle('on', i < lit));
+    meterRaf = requestAnimationFrame(loop);
+  };
+  loop();
+}
+
 // ---------- 効果音 ----------
 // 押した人の端末で鳴らし、BGM と同じ通り道で全員に届ける（録画にも入る。声の加工・口の動き・字幕は通らない）。重ねて鳴らせる
 const SE_SVG = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>';
@@ -1565,7 +1656,7 @@ if (DEBUG) {
     remote: () => Array.from(S.remote.entries()).map(([id, r]) => ({ id, name: personName(id), char: r.char, mouth: r.st && r.st.mouth, mic: r.mic, ageMs: Math.round(performance.now() - r.at), hasAudio: !!r.audio, hasShare: !!r.shareVideo })),
     order: () => orderedIds().map(personName),
     startRec, stopRec, startShare, stopShare, openRecDialog, recTypes,
-    BGM, BGM_TRACKS, playBgm, stopBgmAll, openBgmDialog, SE, playSe, openSeDialog,
+    BGM, BGM_TRACKS, playBgm, stopBgmAll, openBgmDialog, SE, playSe, openSeDialog, openSoundDialog,
     layout: () => Array.from(S.stage.anim.entries()).map(([id, a]) => ({ name: personName(id), x: Math.round(a.target.x), w: Math.round(a.target.w), bottom: a.target.bottom }))
   };
 }
