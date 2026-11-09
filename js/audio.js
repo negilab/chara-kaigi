@@ -3,6 +3,8 @@ import { E } from './common.js';
 
 // 「音の設定」で選んだもの（この端末に覚える）
 export const SND_KEYS = { mic: 'ck-mic', ns: 'ck-ns', gain: 'ck-micgain', spk: 'ck-spk', remote: 'ck-remotevol' };
+// BGM・効果音の大きさの基準（つまみの値にこれを掛ける。前は 1 で、大きすぎたため 1/3 に）
+export const BGM_BASE = 1 / 3, SE_BASE = 1 / 3;
 export function getPref(k, d) { try { const v = localStorage.getItem(k); return v == null || v === '' ? d : v; } catch (e) { return d; } }
 export function setPref(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) { /* なし */ } }
 
@@ -168,7 +170,7 @@ export class LocalMedia {
     const ac = this.ac;
     const src = ac.createMediaElementSource(el);
     const g = ac.createGain();
-    g.gain.value = vol;
+    g.gain.value = vol * BGM_BASE;
     src.connect(g);
     g.connect(this.dest);
     g.connect(this.recMix);
@@ -182,7 +184,7 @@ export class LocalMedia {
     const src = ac.createBufferSource();
     src.buffer = buffer;
     const g = ac.createGain();
-    g.gain.value = vol;
+    g.gain.value = vol * SE_BASE;
     src.connect(g);
     g.connect(this.dest);
     g.connect(this.recMix);
@@ -190,7 +192,7 @@ export class LocalMedia {
     src.onended = () => { try { g.disconnect(); } catch (e) { /* なし */ } };
     src.start();
   }
-  setBgmVolume(vol) { if (this.bgm) this.bgm.g.gain.setTargetAtTime(vol, this.ac.currentTime, 0.03); }
+  setBgmVolume(vol) { if (this.bgm) this.bgm.g.gain.setTargetAtTime(vol * BGM_BASE, this.ac.currentTime, 0.03); }
   stopBgm() {
     if (!this.bgm) return;
     try { this.bgm.src.disconnect(); this.bgm.g.disconnect(); } catch (e) { /* なし */ }
