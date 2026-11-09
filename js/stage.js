@@ -354,7 +354,9 @@ export function createStage() {
   // ui: 見せる側だけの手がかり（{ drag: { id, px, py, targetId } }）
   function render(g, model, ui) {
     g.save();
-    g.setTransform(1, 0, 0, 1, 0, 0);
+    // 録画を小さい大きさ（1280×720 など）で撮るときは、canvas の幅に合わせて縮めて描く（画面の canvas は幅 1920 なのでそのまま）
+    const k = g.canvas.width / W;
+    g.setTransform(k, 0, 0, k, 0, 0);
     g.filter = 'none';
     g.globalAlpha = 1;
     if (model.share) drawShare(g, model);

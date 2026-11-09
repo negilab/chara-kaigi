@@ -374,6 +374,9 @@ function onMembers(m) {
   if (starts.length) S.meetStart = Math.min(...starts);
   // 画面共有していた人がいなくなったら、共有の印を消す
   if (S.state.sharer && !m[S.state.sharer]) S.room.setState({ sharer: null });
+  // BGM を流していた人がいなくなったら、BGM を終える
+  if (S.state.bgm && !m[S.state.bgm.owner]) S.room.setState({ bgm: null });
+  paintBgm();
   paintBarInfo();
   paintPeople();
 }
@@ -381,6 +384,7 @@ function onMembers(m) {
 function onStateChange() {
   const st = S.state;
   if (S.share && st.sharer && st.sharer !== S.myId) stopShare(true);
+  syncBgm();
   paintBar();
   paintEditHits();
   paintPeople();
@@ -520,9 +524,11 @@ function showMeeting() {
       ${ctl('c-focus', icon('focus'), '話す人を大きく')}
       ${ctl('c-save', icon('save'), '文字起こし<wbr>を保存')}
       ${ctl('c-rec', '<span class="recdot"></span>', '録画')}
+      ${ctl('c-bgm', MUSIC_SVG, 'BGM')}
       <div class="sep"></div>
       ${ctl('c-leave', icon('leave'), '退室', 'leave')}
-      <div class="outright"><span class="recpill" id="recpill" hidden><i></i>録画中 <b id="rectime">0:00</b></span>
+      <div class="bgmpill" id="bgmpill" hidden></div>
+      <div class="outright"><span class="recpill" id="recpill" hidden><i></i><span id="reclbl">録画中</span> <b id="rectime">0:00</b></span>
         <span>${icon('clock')}<b id="elapsed" style="font-weight:500">0:00</b></span><span>${icon('user')}<b id="count" style="font-weight:500">1人</b></span></div>
     </div>
   </div>`;
@@ -535,7 +541,8 @@ function showMeeting() {
   $('#c-cc').addEventListener('click', () => { S.captionsOn = !S.captionsOn; paintBar(); });
   $('#c-focus').addEventListener('click', () => S.room.setState({ focus: !S.state.focus }));
   $('#c-save').addEventListener('click', () => { if (!saveTranscript()) toast('まだ発言がありません'); });
-  $('#c-rec').addEventListener('click', () => (S.rec ? stopRec() : startRec()));
+  $('#c-rec').addEventListener('click', () => (S.rec ? stopRec() : openRecDialog()));
+  $('#c-bgm').addEventListener('click', openBgmDialog);
   $('#c-leave').addEventListener('click', askLeave);
   setupStagePointer();
   setupPeople();
@@ -568,8 +575,11 @@ function paintBar() {
   setCtl('c-share', S.share ? '共有を止める' : '画面共有', S.share ? 'on' : '');
   setCtl('c-cc', S.captionsOn ? '字幕 オン' : '字幕 オフ', S.captionsOn ? 'on' : '');
   setCtl('c-focus', '話す人を大きく', S.state.focus ? 'on' : '');
-  setCtl('c-rec', S.rec ? '録画中' : '録画', S.rec ? 'recon' : '');
+  const recWord = S.rec && S.rec.kind === 'audio' ? '録音中' : '録画中';
+  setCtl('c-rec', S.rec ? recWord : '録画', S.rec ? 'recon' : '');
   $('#recpill').hidden = !S.rec;
+  $('#reclbl').textContent = recWord;
+  paintBgm();
 }
 function paintBarInfo() {
   const c = $('#count');
@@ -1005,24 +1015,124 @@ function stopShare(byOther) {
 
 // ---------- 録画 ----------
 let recCanvas = null, recCtx = null, recDrawAt = 0;
-function startRec() {
+// 録画の大きさ（16:9 のまま解像度だけ替える）と、決めて渡す音質の上限。1時間あたりの目安:
+// gb は 3人の会議を 20 秒ずつ撮って測った値（VP9/VP8/MP4 で 1080: 0.22〜0.33、720: 0.18〜0.26、480: 0.12〜0.17 GB）、
+// max は上限の音質（映像 vbps＋音声 128kbps）で埋まったときの値（動きの多い画面共有など）
+const REC_SIZES = [
+  { h: 1080, w: 1920, vbps: 6000000, gb: '0.3', max: '2.7' },
+  { h: 720, w: 1280, vbps: 3000000, gb: '0.25', max: '1.4' },
+  { h: 480, w: 854, vbps: 1500000, gb: '0.15', max: '0.7' }
+];
+const REC_ABPS = 128000;
+const REC_AUDIO_MB = '60';
+// ファイルの種類。この端末の MediaRecorder が撮れると答えたものだけを出す（iPhone は MP4 だけのことが多い）
+const REC_TYPES = {
+  video: [
+    { id: 'vp9', label: 'WebM（VP9）', ext: 'webm', mimes: ['video/webm;codecs=vp9,opus'] },
+    { id: 'vp8', label: 'WebM（VP8）', ext: 'webm', mimes: ['video/webm;codecs=vp8,opus', 'video/webm'] },
+    { id: 'mp4', label: 'MP4（H.264）', ext: 'mp4', mimes: ['video/mp4;codecs=avc1.42E01F,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4'] }
+  ],
+  audio: [
+    { id: 'opus', label: 'WebM（Opus）', ext: 'webm', mimes: ['audio/webm;codecs=opus', 'audio/webm'] },
+    { id: 'm4a', label: 'M4A（AAC）', ext: 'm4a', mimes: ['audio/mp4;codecs=mp4a.40.2', 'audio/mp4'] }
+  ]
+};
+function recTypes(kind) {
+  const ok = (m) => { try { return MediaRecorder.isTypeSupported(m); } catch (e) { return false; } };
+  return REC_TYPES[kind].map((t) => Object.assign({}, t, { mime: t.mimes.find(ok) })).filter((t) => t.mime);
+}
+function recSaved() { try { return JSON.parse(localStorage.getItem('ck-rec') || '{}') || {}; } catch (e) { return {}; } }
+function recRemember(o) { try { localStorage.setItem('ck-rec', JSON.stringify(o)); } catch (e) { /* なし */ } }
+// 前回の選び方（撮れない組み合わせなら、撮れるものに直す）
+function recChoice(saved) {
+  const types = { video: recTypes('video'), audio: recTypes('audio') };
+  let kind = saved.kind === 'audio' ? 'audio' : 'video';
+  if (!types[kind].length) kind = kind === 'video' ? 'audio' : 'video';
+  const fmt = {};
+  ['video', 'audio'].forEach((k) => { fmt[k] = (types[k].find((t) => t.id === saved[k]) || types[k][0] || {}).id; });
+  const h = REC_SIZES.some((z) => z.h === saved.h) ? saved.h : 1080;
+  return { types, kind, fmt, h };
+}
+
+function openRecDialog() {
   if (typeof MediaRecorder === 'undefined') { toast('この Chrome では録画できません'); return; }
-  recCanvas = document.createElement('canvas');
-  recCanvas.width = W; recCanvas.height = H;
-  recCtx = recCanvas.getContext('2d');
-  renderRec(performance.now(), true);
-  const vs = recCanvas.captureStream(30);
-  const stream = new MediaStream([vs.getVideoTracks()[0], S.media.recDest.stream.getAudioTracks()[0]]);
-  const types = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
-  const mimeType = types.find((t) => MediaRecorder.isTypeSupported(t)) || '';
+  const c = recChoice(recSaved());
+  if (!c.types.video.length && !c.types.audio.length) { toast('この Chrome では録画できません'); return; }
+  const scrim = openDialog('<div id="recdlg"></div>');
+  const box = $('#recdlg', scrim);
+  const opt = (attr, val, on, main, sub = '') => `<button type="button" class="ropt ${on ? 'on' : ''}" ${attr}="${val}" aria-pressed="${on}"><span class="rm">${main}</span>${sub ? `<span class="rs">${sub}</span>` : ''}</button>`;
+  const paint = () => {
+    const video = c.kind === 'video';
+    const list = c.types[c.kind];
+    const hasMp4 = c.types.video.some((t) => t.id === 'mp4');
+    box.innerHTML = `<button type="button" class="x" aria-label="閉じる">${icon('close')}</button>
+      <h2>${video ? '録画' : '録音'}</h2>
+      <div class="lead">止めると、この端末にファイルで保存します。</div>
+      <div class="lbl">内容</div>
+      <div class="ropts">${c.types.video.length ? opt('data-kind', 'video', video, '映像と音声') : ''}${c.types.audio.length ? opt('data-kind', 'audio', !video, '音声だけ') : ''}</div>
+      <div class="lbl">ファイルの種類</div>
+      <div class="ropts">${list.map((t) => opt('data-fmt', t.id, t.id === c.fmt[c.kind], t.label, `.${t.ext}`)).join('')}</div>
+      ${video && hasMp4 ? '<div class="rnote">YouTube に載せるなら、MP4 が扱いやすいです（WebM も載せられます）。</div>' : ''}
+      ${video ? `<div class="lbl">大きさ</div>
+      <div class="ropts rows">${REC_SIZES.map((z) => opt('data-h', z.h, z.h === c.h, `${z.w}×${z.h}`, `1時間で約 ${z.gb} GB・最大 ${z.max} GB（目安）`)).join('')}</div>
+      <div class="rnote">動きの多い画面共有をすると、ファイルは大きくなります。</div>`
+    : `<div class="rnote">ファイルの大きさは、1時間で約 ${REC_AUDIO_MB} MB です（目安）。</div>`}
+      <div class="acts" style="margin-top:22px"><button type="button" class="btn ghost" id="b-rno">やめる</button>
+        <button type="button" class="btn pri" id="b-rgo">${video ? '録画を始める' : '録音を始める'}</button></div>`;
+  };
+  paint();
+  box.addEventListener('click', (ev) => {
+    const b = ev.target.closest('button');
+    if (!b) return;
+    if (b.classList.contains('x') || b.id === 'b-rno') { closeDialog(); return; }
+    if (b.dataset.kind) c.kind = b.dataset.kind;
+    else if (b.dataset.fmt) c.fmt[c.kind] = b.dataset.fmt;
+    else if (b.dataset.h) c.h = Number(b.dataset.h);
+    else if (b.id === 'b-rgo') {
+      recRemember({ kind: c.kind, video: c.fmt.video, audio: c.fmt.audio, h: c.h });
+      const t = c.types[c.kind].find((x) => x.id === c.fmt[c.kind]);
+      const z = REC_SIZES.find((x) => x.h === c.h);
+      closeDialog();
+      startRec({ kind: c.kind, mime: t.mime, ext: t.ext, w: z.w, h: z.h, vbps: z.vbps });
+      return;
+    } else return;
+    paint();
+  });
+}
+
+// opt: { kind: 'video' | 'audio', mime, ext, w, h, vbps }（省くと、前回の選び方で撮る）
+function startRec(opt) {
+  if (typeof MediaRecorder === 'undefined') { toast('この Chrome では録画できません'); return; }
+  if (!opt) {
+    const c = recChoice(recSaved());
+    const t = c.types[c.kind].find((x) => x.id === c.fmt[c.kind]);
+    const z = REC_SIZES.find((x) => x.h === c.h);
+    if (!t) { toast('この Chrome では録画できません'); return; }
+    opt = { kind: c.kind, mime: t.mime, ext: t.ext, w: z.w, h: z.h, vbps: z.vbps };
+  }
+  const video = opt.kind === 'video';
+  const tracks = [S.media.recDest.stream.getAudioTracks()[0]];
+  if (video) {
+    recCanvas = document.createElement('canvas');
+    recCanvas.width = opt.w; recCanvas.height = opt.h;
+    recCtx = recCanvas.getContext('2d');
+    renderRec(performance.now(), true);
+    tracks.unshift(recCanvas.captureStream(30).getVideoTracks()[0]);
+  }
+  const ro = { mimeType: opt.mime, audioBitsPerSecond: REC_ABPS };
+  if (video) ro.videoBitsPerSecond = opt.vbps;
   let mr;
-  try { mr = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 6000000 }); } catch (e) { toast('録画を始められませんでした'); return; }
+  try { mr = new MediaRecorder(new MediaStream(tracks), ro); } catch (e) {
+    recCanvas = null; recCtx = null;
+    toast(video ? '録画を始められませんでした' : '録音を始められませんでした');
+    return;
+  }
   const chunks = [];
   mr.ondataavailable = (ev) => { if (ev.data && ev.data.size) chunks.push(ev.data); };
-  S.rec = { mr, chunks, start: Date.now(), mimeType: mr.mimeType || 'video/webm' };
+  S.rec = { mr, chunks, start: Date.now(), mimeType: mr.mimeType || opt.mime, ext: opt.ext, kind: opt.kind, w: opt.w, h: opt.h };
   mr.start(1000);
   paintBar();
-  toast('録画を始めました。止めると、録画のファイルを保存します');
+  toast(video ? '録画を始めました。止めると、録画のファイルを保存します' : '録音を始めました。止めると、録音のファイルを保存します');
 }
 function stopRec() {
   const rec = S.rec;
@@ -1031,10 +1141,10 @@ function stopRec() {
   paintBar();
   return new Promise((resolve) => {
     rec.mr.onstop = () => {
-      const blob = new Blob(rec.chunks, { type: 'video/webm' });
+      const blob = new Blob(rec.chunks, { type: rec.mimeType.split(';')[0] });
       const d = new Date(rec.start);
-      download(blob, `キャラ会議_${ymd(rec.start)}_${pad2(d.getHours())}${pad2(d.getMinutes())}.webm`);
-      if (DEBUG) window.__lastRecording = { size: blob.size, type: rec.mimeType, ms: Date.now() - rec.start };
+      download(blob, `キャラ会議_${ymd(rec.start)}_${pad2(d.getHours())}${pad2(d.getMinutes())}.${rec.ext}`);
+      if (DEBUG) window.__lastRecording = { size: blob.size, type: rec.mimeType, ms: Date.now() - rec.start, kind: rec.kind, w: rec.w, h: rec.h, blob };
       recCanvas = null; recCtx = null;
       resolve();
     };
@@ -1045,6 +1155,128 @@ function renderRec(now, force) {
   if (!recCtx || (!force && now - recDrawAt < 30)) return;
   recDrawAt = now;
   S.stage.render(recCtx, buildModel(now, 'rec'), null);
+}
+
+// ---------- BGM ----------
+// 部屋に1曲だけ。だれが流しているかは部屋の状態 bgm: { owner, title, startedAt } で全員が見る。
+// 曲のファイルは送らない。流している人の端末で鳴らした音を、声と同じ音の通り道で届ける（声の加工・口の動き・字幕は通らない）
+const MUSIC_SVG = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17.5V6l10-2v11.5"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/></svg>';
+const BGM = { file: null, vol: 20, loop: true };   // この端末で選んだ曲・音量（%）・くり返す
+function bgmTitle(name) { return String(name || '').replace(/\.[^.]+$/, '').slice(0, 40) || '曲'; }
+
+function playBgm() {
+  if (!BGM.file || !S.media || !S.room) return;
+  stopBgmLocal();
+  const el = new Audio();
+  el.setAttribute('playsinline', '');
+  el.preload = 'auto';
+  el.loop = BGM.loop;
+  const url = URL.createObjectURL(BGM.file);
+  el.src = url;
+  const startedAt = Date.now();
+  const mine = S.bgm = { el, url, startedAt, seen: false };
+  el.addEventListener('ended', () => { if (S.bgm === mine) stopBgmAll(); });
+  try { S.media.playBgm(el, BGM.vol / 100); } catch (e) { console.warn(e); }
+  // play() は押した手の中で呼ぶ（iPhone では、押した直後でないと鳴らない）
+  el.play().then(() => {
+    if (S.bgm !== mine) return;
+    S.room.setState({ bgm: { owner: S.myId, title: bgmTitle(BGM.file.name), startedAt } });
+  }).catch((e) => {
+    console.warn(e);
+    if (S.bgm === mine) stopBgmLocal();
+    toast('この曲のファイルは流せません。別のファイルを選んでください');
+  });
+  paintBgm();
+}
+// この端末で鳴らしている曲を止める（部屋の状態は触らない）
+function stopBgmLocal() {
+  const b = S.bgm;
+  if (!b) return;
+  S.bgm = null;
+  if (S.media) S.media.stopBgm();
+  try { b.el.pause(); b.el.removeAttribute('src'); b.el.load(); } catch (e) { /* なし */ }
+  URL.revokeObjectURL(b.url);
+  paintBgm();
+}
+// 全員の BGM を止める（だれが押してもよい）
+function stopBgmAll() {
+  stopBgmLocal();
+  if (S.state.bgm && S.room) S.room.setState({ bgm: null });
+}
+// 部屋の状態が変わったとき: ほかの人が新しい曲を流した・だれかが止めたら、自分の曲を止める
+function syncBgm() {
+  const b = S.bgm;
+  if (!b) return;
+  const cur = S.state.bgm;
+  const same = cur && cur.owner === S.myId && cur.startedAt === b.startedAt;
+  if (!b.seen) { if (same) b.seen = true; return; }   // 書いた曲がまだ届いていないあいだは待つ
+  if (!same) stopBgmLocal();
+}
+function bgmLabel() {
+  const cur = S.state.bgm;
+  if (!cur) return '';
+  return `♪ ${cur.title || '曲'}（${personName(cur.owner) || '?'}）`;
+}
+function paintBgm() {
+  if (S.screen !== 'meet') return;
+  const on = !!S.state.bgm;
+  const b = $('#c-bgm');
+  if (b) b.classList.toggle('on', on);
+  const pill = $('#bgmpill');
+  if (pill) { pill.hidden = !on; pill.textContent = bgmLabel(); pill.title = bgmLabel(); }
+  paintBgmDialog();
+}
+
+function openBgmDialog() {
+  const scrim = openDialog(`
+    <button type="button" class="x" aria-label="閉じる">${icon('close')}</button>
+    <h2>BGM</h2>
+    <div class="lead">選んだ曲を、参加している全員に流します。録画にも入ります。曲のファイルは送らず、この端末で鳴らした音だけが届きます。</div>
+    <div class="bgm-now" id="bgm-now"></div>
+    <div class="lbl">曲</div>
+    <div class="bgm-file"><label class="btn" for="bgm-in">${MUSIC_SVG}曲を選ぶ</label><span id="bgm-fn"></span>
+      <input type="file" id="bgm-in" class="vh" accept="audio/*"></div>
+    <label class="lbl" for="bgm-vol" style="margin-top:18px">音量 <b id="bgm-vv"></b></label>
+    <input type="range" id="bgm-vol" min="0" max="100" step="1" value="${BGM.vol}" style="--p:${BGM.vol}%">
+    <div class="bgm-loop"><span id="bgm-loop-l">くり返す</span><button type="button" class="sw ${BGM.loop ? 'on' : ''}" id="bgm-loop" role="switch" aria-checked="${BGM.loop}" aria-labelledby="bgm-loop-l"></button></div>
+    <div class="rnote">YouTube に載せるなら、使ってよい曲（著作権フリーなど）を選んでください</div>
+    <div class="acts" style="margin-top:22px">
+      <button type="button" class="btn ghost" id="b-bstop">${icon('stop')}止める</button>
+      <button type="button" class="btn" id="b-bclose">閉じる</button>
+      <button type="button" class="btn pri" id="b-bplay">${icon('play')}流す</button>
+    </div>`);
+  $('#bgm-in', scrim).addEventListener('change', (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    if (f) BGM.file = f;
+    paintBgmDialog();
+  });
+  const vol = $('#bgm-vol', scrim);
+  vol.addEventListener('input', () => {
+    BGM.vol = Number(vol.value);
+    vol.style.setProperty('--p', `${BGM.vol}%`);
+    if (S.bgm && S.media) S.media.setBgmVolume(BGM.vol / 100);
+    paintBgmDialog();
+  });
+  $('#bgm-loop', scrim).addEventListener('click', (ev) => {
+    BGM.loop = !BGM.loop;
+    ev.currentTarget.classList.toggle('on', BGM.loop);
+    ev.currentTarget.setAttribute('aria-checked', BGM.loop);
+    if (S.bgm) S.bgm.el.loop = BGM.loop;
+  });
+  $('#b-bplay', scrim).addEventListener('click', playBgm);
+  $('#b-bstop', scrim).addEventListener('click', stopBgmAll);
+  $('#b-bclose', scrim).addEventListener('click', () => closeDialog());
+  paintBgmDialog();
+}
+function paintBgmDialog() {
+  const now = $('#bgm-now');
+  if (!now) return;
+  now.textContent = S.state.bgm ? `いま流れている曲：${bgmLabel()}` : 'いま流れている曲はありません';
+  now.classList.toggle('on', !!S.state.bgm);
+  $('#bgm-fn').textContent = BGM.file ? BGM.file.name : '曲を選んでいません';
+  $('#bgm-vv').textContent = `${BGM.vol}%`;
+  $('#b-bplay').disabled = !BGM.file;
+  $('#b-bstop').disabled = !S.state.bgm && !S.bgm;
 }
 
 // ---------- 5 退室 ----------
@@ -1061,7 +1293,7 @@ function askLeave() {
     <div class="lbl">内容の見本</div>
     <div class="prev ${S.transcript.length > 6 ? 'more' : ''}">${lines.map((l) => `<div class="r"><span class="tm">${hhmm(l.t)}</span><span class="nm">${esc(l.name)}</span><span>${esc(l.text)}</span></div>`).join('')}</div>
     <div class="meta">全 ${S.transcript.length} 件の発言・${mins} 分</div>
-    <div class="acts">${S.rec ? '<div class="l">録画は止めて、ファイルに保存します</div>' : ''}
+    <div class="acts">${S.rec ? `<div class="l">${S.rec.kind === 'audio' ? '録音' : '録画'}は止めて、ファイルに保存します</div>` : ''}
       <button type="button" class="btn ghost" id="b-nosave">保存しないで出る</button>
       <button type="button" class="btn pri" id="b-save">${icon('save')}保存する</button></div>`);
   $('#b-nosave', scrim).addEventListener('click', () => leaveNow(false));
@@ -1073,6 +1305,7 @@ async function leaveNow(save) {
   if (save) saveTranscript();
   if (S.rec) await stopRec();
   if (S.share) stopShare();
+  if (S.bgm) stopBgmAll();
   stopCaptions();
   if (S.mesh) S.mesh.closeAll();
   S.remote.forEach((r) => { if (r.audio) { r.audio.srcObject = null; r.audio.remove(); } });
@@ -1163,7 +1396,8 @@ if (DEBUG) {
     peers: () => Array.from(S.mesh ? S.mesh.peers.values() : []).map((p) => ({ id: p.id, conn: p.pc.connectionState, dc: p.dc.readyState })),
     remote: () => Array.from(S.remote.entries()).map(([id, r]) => ({ id, name: personName(id), char: r.char, mouth: r.st && r.st.mouth, mic: r.mic, ageMs: Math.round(performance.now() - r.at), hasAudio: !!r.audio, hasShare: !!r.shareVideo })),
     order: () => orderedIds().map(personName),
-    startRec, stopRec, startShare, stopShare,
+    startRec, stopRec, startShare, stopShare, openRecDialog, recTypes,
+    BGM, playBgm, stopBgmAll, openBgmDialog,
     layout: () => Array.from(S.stage.anim.entries()).map(([id, a]) => ({ name: personName(id), x: Math.round(a.target.x), w: Math.round(a.target.w), bottom: a.target.bottom }))
   };
 }

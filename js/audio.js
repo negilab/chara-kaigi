@@ -90,6 +90,27 @@ export class LocalMedia {
     } catch (e) { return null; }
   }
 
+  // BGM: 声の加工・口の動き（rms）・字幕を通らずに、送る音・録画の音・自分のスピーカーへ直接まぜる。
+  // マイクを切っても流れる（muteGain の後ろにつなぐため）。el は曲を読み込んだ <audio>（1つの曲に1つ）
+  playBgm(el, vol) {
+    this.stopBgm();
+    const ac = this.ac;
+    const src = ac.createMediaElementSource(el);
+    const g = ac.createGain();
+    g.gain.value = vol;
+    src.connect(g);
+    g.connect(this.dest);
+    g.connect(this.recMix);
+    g.connect(ac.destination);
+    this.bgm = { src, g };
+  }
+  setBgmVolume(vol) { if (this.bgm) this.bgm.g.gain.setTargetAtTime(vol, this.ac.currentTime, 0.03); }
+  stopBgm() {
+    if (!this.bgm) return;
+    try { this.bgm.src.disconnect(); this.bgm.g.disconnect(); } catch (e) { /* なし */ }
+    this.bgm = null;
+  }
+
   close() {
     if (this.stream) this.stream.getTracks().forEach((t) => t.stop());
     if (this.engine) this.engine.destroy();
