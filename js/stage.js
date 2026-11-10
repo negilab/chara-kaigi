@@ -311,48 +311,71 @@ export function createStage() {
     return lines.slice(-2);
   }
 
-  function drawCaption(g, model) {
-    const cap = model.caption;
-    if (!cap || !cap.text || model.captionsOn === false) return;
-    const share = !!model.share;
-    const size = share ? 46 : 50;
-    const bottom = share ? 132 : 500;
-    g.save();
-    g.globalAlpha = cap.alpha == null ? 1 : cap.alpha;
-    g.font = `800 ${size}px ${FONT}`;
-    g.letterSpacing = '1.5px';
-    const lines = wrap(g, cap.text, share ? 1100 : 1640);
-    const lh = Math.round(size * 1.3);
-    const tw = Math.max(...lines.map((l) => g.measureText(l).width));
-    const left = share ? 235 : 960 - tw / 2;
-    const baseY = H - bottom;
-    // 名前の札
-    g.font = `800 24px ${FONT}`;
-    g.letterSpacing = '2px';
-    const nw = g.measureText(cap.name).width + 32;
-    const tagY = baseY - lh * lines.length - 10 - 40 + 6;
-    g.shadowColor = 'rgba(0,0,0,.35)'; g.shadowBlur = 14; g.shadowOffsetY = 4;
-    pill(g, left + 4, tagY, nw, 40, 10, cap.color);
-    g.shadowColor = 'transparent';
-    g.fillStyle = inkOn(cap.color);
-    g.textBaseline = 'middle';
-    g.fillText(cap.name, left + 4 + 16, tagY + 21);
-    // セリフ（黒い縁取りの白い字）
-    g.font = `800 ${size}px ${FONT}`;
-    g.letterSpacing = '1.5px';
-    g.textBaseline = 'alphabetic';
-    g.lineJoin = 'round';
-    lines.forEach((l, i) => {
-      const y = baseY - lh * (lines.length - 1 - i) - 8;
+  // 名札と字幕の吹き出し（いつも名札、話しているときは名札に吹き出しをつける）。
+  // 名札はふだん頭の上。舞台の上の端で切れてしまうときは、胸の下へ。吹き出しは、名札が上なら名札の上、名札が下なら名札の下。
+  // 録画を 1280×720 にしても読める大きさ（名札 24px・吹き出し 26px）。どちらも舞台の端で切れないように寄せる
+  const TAG_SIZE = 24, TAG_H = 36, TAG_PAD = 12;
+  const CAP_SIZE = 26, CAP_MAXW = 480, CAP_PAD_X = 14, CAP_PAD_Y = 9, CAP_GAP = 8, EDGE = 12;
+  function clampX(x, w) { return Math.min(W - EDGE - w, Math.max(EDGE, x)); }
+  function drawTags(g, model) {
+    const caps = model.captionsOn === false ? {} : (model.caps || {});
+    model.people.forEach((p) => {
+      const a = anim.get(p.id);
+      if (!a || !p.art) return;
+      // 絵の描かれている場所（drawPerson と同じ計算。話す人の拡大・持ち上げも含む）
+      const w = a.w * (1 + (GROW - 1) * (a.grow || 0)), h = w * 0.5625;
+      const lf = a.lift || 0;
+      const top = H - a.bottom - h - (10 * a.talk + 6 * a.hop) - 10 * lf;
+      const headTop = top + h * 0.08;   // 絵の上の余白を除いた、頭のいちばん上のあたり
       g.save();
-      g.shadowColor = 'rgba(0,0,0,.45)'; g.shadowBlur = 14; g.shadowOffsetY = 4;
-      g.lineWidth = 6; g.strokeStyle = '#000';
-      g.strokeText(l, left, y);
+      // 名札
+      g.font = `800 ${TAG_SIZE}px ${FONT}`;
+      g.letterSpacing = '1px';
+      const name = p.name || '';
+      const tw = g.measureText(name).width + TAG_PAD * 2;
+      let ty = headTop - 10 - TAG_H, below = false;
+      if (ty < EDGE) { ty = Math.min(H - EDGE - TAG_H, top + h * 0.78); below = true; }   // 上で切れるときは胸の下へ
+      const tx = clampX(a.x - tw / 2, tw);
+      // 字幕（あれば）を先に組み立てて、名札の上か下に入るように名札ごと寄せる
+      const cap = caps[p.id];
+      let lines = null, bw = 0, bh = 0, lh = 0;
+      if (cap && cap.text) {
+        g.font = `700 ${CAP_SIZE}px ${FONT}`;
+        g.letterSpacing = '0.5px';
+        lines = wrap(g, cap.text, CAP_MAXW);
+        lh = Math.round(CAP_SIZE * 1.35);
+        bw = Math.max(...lines.map((l) => g.measureText(l).width)) + CAP_PAD_X * 2;
+        bh = lh * lines.length + CAP_PAD_Y * 2;
+        if (!below && ty - CAP_GAP - bh < EDGE) { ty = Math.min(H - EDGE - TAG_H, top + h * 0.78); below = true; }
+        if (below && ty + TAG_H + CAP_GAP + bh > H - EDGE) ty = H - EDGE - TAG_H - CAP_GAP - bh;
+      }
+      ty = Math.min(H - EDGE - TAG_H, Math.max(EDGE, ty));
+      g.shadowColor = 'rgba(0,0,0,.35)'; g.shadowBlur = 10; g.shadowOffsetY = 3;
+      pill(g, tx, ty, tw, TAG_H, 10, p.color || 'rgba(12,16,30,.86)');
+      g.shadowColor = 'transparent';
+      g.font = `800 ${TAG_SIZE}px ${FONT}`;
+      g.letterSpacing = '1px';
+      g.fillStyle = p.color ? inkOn(p.color) : '#fff';
+      g.textBaseline = 'middle';
+      g.fillText(name, tx + TAG_PAD, ty + TAG_H / 2 + 1);
+      // 吹き出し
+      if (lines) {
+        g.globalAlpha = cap.alpha == null ? 1 : cap.alpha;
+        const bx = clampX(a.x - bw / 2, bw);
+        const by = below ? ty + TAG_H + CAP_GAP : ty - CAP_GAP - bh;
+        g.shadowColor = 'rgba(0,0,0,.35)'; g.shadowBlur = 14; g.shadowOffsetY = 4;
+        g.beginPath(); g.roundRect(bx, by, bw, bh, 14);
+        g.fillStyle = 'rgba(12,16,30,.8)'; g.fill();
+        g.shadowColor = 'transparent';
+        g.lineWidth = 2; g.strokeStyle = p.color || 'rgba(255,255,255,.3)'; g.stroke();
+        g.font = `700 ${CAP_SIZE}px ${FONT}`;
+        g.letterSpacing = '0.5px';
+        g.fillStyle = '#fff';
+        g.textBaseline = 'top';
+        lines.forEach((l, k) => g.fillText(l, bx + CAP_PAD_X, by + CAP_PAD_Y + lh * k + (lh - CAP_SIZE) / 2));
+      }
       g.restore();
-      g.fillStyle = '#fff';
-      g.fillText(l, left, y);
     });
-    g.restore();
   }
 
   function drawShare(g, model) {
@@ -424,7 +447,7 @@ export function createStage() {
       drawPerson(g, `${model.key}-${p.id}`, p, a, { small: !!model.share });
     });
     badges.forEach((b) => drawBadge(g, b));
-    drawCaption(g, model);
+    drawTags(g, model);
     g.restore();
   }
 

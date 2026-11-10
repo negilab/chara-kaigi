@@ -41,6 +41,7 @@ const S = {
   mouth: 80,             // 口の反応（boot で savedMouth から読み直す）
   speakerId: '',
   caption: null,
+  caps: new Map(),       // 人ごとの字幕（id → { text, final, color, at }）
   captionsOn: true,
   transcript: [],
   rec: null,
@@ -515,7 +516,7 @@ function buildModel(now, key) {
   const people = orderedIds().map((id) => {
     if (id === S.myId) {
       return {
-        id, name: S.name, char: S.char, art: S.myArt || S.arts[S.char], st: S.myState,
+        id, name: S.name, char: S.char, color: charOf(S.char).bg, art: S.myArt || S.arts[S.char], st: S.myState,
         mic: S.media.micOn, talking: S.media.micOn && now - S.myTalkAt < 350, lv: S.lastRms, size: sizes[id] || 'L'
       };
     }
@@ -523,7 +524,7 @@ function buildModel(now, key) {
     const ch = r.char || (S.members[id] && S.members[id].char) || 'sennin';
     const fresh = now - (r.at || 0) < 2000;
     return {
-      id, name: personName(id), char: ch, art: S.arts[ch], st: fresh ? r.st : Object.assign({}, r.st, { mouth: 0 }),
+      id, name: personName(id), char: ch, color: charOf(ch).bg, art: S.arts[ch], st: fresh ? r.st : Object.assign({}, r.st, { mouth: 0 }),
       mic: r.mic !== false, talking: fresh && r.mic !== false && now - (r.talkAt || 0) < 350, lv: r.lv || 0, size: sizes[id] || 'L'
     };
   });
@@ -542,15 +543,17 @@ function buildModel(now, key) {
     const video = sharer === S.myId ? (S.share && S.share.video) : (S.remote.get(sharer) || {}).shareVideo;
     if (video) share = { video, ownerName: personName(sharer) };
   }
-  let caption = null;
-  if (S.caption) {
-    const age = now - S.caption.at;
-    const life = S.caption.final ? 4000 : 9000;
-    if (age < life) caption = { name: S.caption.name, color: S.caption.color, text: S.caption.text, alpha: Math.min(1, (life - age) / 500) };
-  }
+  // 字幕: 人ごとに、その人のキャラの頭の上に出す（いちばん新しい発言。確定してから 4 秒、途中なら 9 秒で消える）
+  const caps = {};
+  S.caps.forEach((c, who) => {
+    const age = now - c.at;
+    const life = c.final ? 4000 : 9000;
+    if (age < life) caps[who] = { text: c.text, color: c.color, alpha: Math.min(1, (life - age) / 500) };
+    else S.caps.delete(who);
+  });
   return {
     key, people, share, speakerId: S.speakerId,
-    topic: S.state.topic || '', show: S.state.show || SHOW_DEFAULT, caption, captionsOn: S.captionsOn, live: liveModel(now),
+    topic: S.state.topic || '', show: S.state.show || SHOW_DEFAULT, caps, captionsOn: S.captionsOn, live: liveModel(now),
     pos: posMap(), z: S.state.z || {}
   };
 }
@@ -1109,6 +1112,7 @@ function onCaption(who, id, text, final) {
   const name = personName(who);
   const ch = who === S.myId ? S.char : ((S.remote.get(who) || {}).char || (S.members[who] && S.members[who].char) || 'sennin');
   S.caption = { id, who, name, color: charOf(ch).bg, text, final, at: performance.now() };
+  S.caps.set(who, { text, final, color: charOf(ch).bg, at: performance.now() });
   if (final && !seenFinal.has(id)) {
     seenFinal.add(id);
     S.transcript.push({ t: Date.now(), name, text });
