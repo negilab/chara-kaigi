@@ -316,6 +316,29 @@ export function createStage() {
   // 録画を 1280×720 にしても読める大きさ（名札 24px・吹き出し 26px）。どちらも舞台の端で切れないように寄せる
   const TAG_SIZE = 24, TAG_H = 36, TAG_PAD = 12;
   const CAP_SIZE = 26, CAP_MAXW = 480, CAP_PAD_X = 14, CAP_PAD_Y = 9, CAP_GAP = 8, EDGE = 12;
+  // 絵の描かれている範囲（不透明なところ）を、枠に対する割合で。1 枚の絵ごとに 1 回だけ数えて覚える
+  const boundsCache = new WeakMap();
+  function artBounds(art) {
+    const bm = art && art.base;
+    if (!bm) return { t: 0, b: 1, l: 0, r: 1 };
+    let v = boundsCache.get(bm);
+    if (v) return v;
+    v = { t: 0, b: 1, l: 0, r: 1 };
+    try {
+      const cw = 320, ch = 180;
+      const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+      const cg = c.getContext('2d', { willReadFrequently: true });
+      cg.drawImage(bm, 0, 0, cw, ch);
+      const d = cg.getImageData(0, 0, cw, ch).data;
+      let t = ch, b = -1, l = cw, r = -1;
+      for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+        if (d[(y * cw + x) * 4 + 3] > 24) { if (y < t) t = y; if (y > b) b = y; if (x < l) l = x; if (x > r) r = x; }
+      }
+      if (b >= 0) v = { t: t / ch, b: (b + 1) / ch, l: l / cw, r: (r + 1) / cw };
+    } catch (e) { /* 数えられなければ枠いっぱい */ }
+    boundsCache.set(bm, v);
+    return v;
+  }
   function clampX(x, w) { return Math.min(W - EDGE - w, Math.max(EDGE, x)); }
   function drawTags(g, model) {
     const caps = model.captionsOn === false ? {} : (model.caps || {});
@@ -326,17 +349,17 @@ export function createStage() {
       const w = a.w * (1 + (GROW - 1) * (a.grow || 0)), h = w * 0.5625;
       const lf = a.lift || 0;
       const top = H - a.bottom - h - (10 * a.talk + 6 * a.hop) - 10 * lf;
-      const headTop = top + h * 0.08;   // 絵の上の余白を除いた、頭のいちばん上のあたり
+      // 絵の、実際に描かれている範囲（透明な余白を除く）
+      const bb = artBounds(p.art);
+      const artTop = top + h * bb.t, artBot = top + h * bb.b;
+      const artL = a.x - w / 2 + w * bb.l, artR = a.x - w / 2 + w * bb.r;
       g.save();
       // 名札
       g.font = `800 ${TAG_SIZE}px ${FONT}`;
       g.letterSpacing = '1px';
       const name = p.name || '';
       const tw = g.measureText(name).width + TAG_PAD * 2;
-      let ty = headTop - 10 - TAG_H, below = false;
-      if (ty < EDGE) { ty = Math.min(H - EDGE - TAG_H, top + h * 0.78); below = true; }   // 上で切れるときは胸の下へ
-      const tx = clampX(a.x - tw / 2, tw);
-      // 字幕（あれば）を先に組み立てて、名札の上か下に入るように名札ごと寄せる
+      // 字幕（あれば）
       const cap = caps[p.id];
       let lines = null, bw = 0, bh = 0, lh = 0;
       if (cap && cap.text) {
@@ -346,10 +369,19 @@ export function createStage() {
         lh = Math.round(CAP_SIZE * 1.35);
         bw = Math.max(...lines.map((l) => g.measureText(l).width)) + CAP_PAD_X * 2;
         bh = lh * lines.length + CAP_PAD_Y * 2;
-        if (!below && ty - CAP_GAP - bh < EDGE) { ty = Math.min(H - EDGE - TAG_H, top + h * 0.78); below = true; }
-        if (below && ty + TAG_H + CAP_GAP + bh > H - EDGE) ty = H - EDGE - TAG_H - CAP_GAP - bh;
       }
-      ty = Math.min(H - EDGE - TAG_H, Math.max(EDGE, ty));
+      const need = TAG_H + (lines ? CAP_GAP + bh : 0);
+      // ふだんは髪のいちばん上より上。入らなければ絵の下の端より下。それも入らなければ、頭の横（右、入らなければ左）
+      let ty, tx, below, side = 0;
+      if (artTop - 10 - need >= EDGE) { below = false; ty = artTop - 10 - TAG_H; tx = clampX(a.x - tw / 2, tw); }
+      else if (artBot + 10 + need <= H - EDGE) { below = true; ty = artBot + 10; tx = clampX(a.x - tw / 2, tw); }
+      else {
+        below = true;
+        const sw = Math.max(tw, bw);
+        side = artR + 12 + sw <= W - EDGE ? 1 : -1;
+        tx = side > 0 ? artR + 12 : Math.max(EDGE, artL - 12 - sw);
+        ty = Math.min(H - EDGE - need, Math.max(EDGE, artTop + 10));
+      }
       g.shadowColor = 'rgba(0,0,0,.35)'; g.shadowBlur = 10; g.shadowOffsetY = 3;
       pill(g, tx, ty, tw, TAG_H, 10, p.color || 'rgba(12,16,30,.86)');
       g.shadowColor = 'transparent';
@@ -361,7 +393,7 @@ export function createStage() {
       // 吹き出し
       if (lines) {
         g.globalAlpha = cap.alpha == null ? 1 : cap.alpha;
-        const bx = clampX(a.x - bw / 2, bw);
+        const bx = side ? clampX(tx, bw) : clampX(a.x - bw / 2, bw);
         const by = below ? ty + TAG_H + CAP_GAP : ty - CAP_GAP - bh;
         g.shadowColor = 'rgba(0,0,0,.35)'; g.shadowBlur = 14; g.shadowOffsetY = 4;
         g.beginPath(); g.roundRect(bx, by, bw, bh, 14);
