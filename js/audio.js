@@ -3,9 +3,8 @@ import { E } from './common.js';
 
 // 「音の設定」で選んだもの（この端末に覚える）
 export const SND_KEYS = { mic: 'ck-mic', ns: 'ck-ns2', gain: 'ck-micgain', spk: 'ck-spk', remote: 'ck-remotevol' };
-// BGM・効果音の大きさの基準（つまみの値にこれを掛ける）。
-// BGM: 1/3 のときの 3% の大きさを、つまみ 20% で出す（1/3 × 3/20）。効果音: 1/3 のときの 10% を、つまみ 70% で出す（1/3 × 10/70）
-export const BGM_BASE = (1 / 3) * (3 / 20), SE_BASE = (1 / 3) * (10 / 70);
+// BGM・効果音の大きさの基準（つまみの値にこれを掛ける。前は 1 で、大きすぎたため 1/3 に）
+export const BGM_BASE = 1 / 3, SE_BASE = 1 / 3;
 export function getPref(k, d) { try { const v = localStorage.getItem(k); return v == null || v === '' ? d : v; } catch (e) { return d; } }
 export function setPref(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) { /* なし */ } }
 

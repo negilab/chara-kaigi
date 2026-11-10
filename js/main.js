@@ -1327,7 +1327,7 @@ function renderRec(now, force) {
 // 部屋に1曲だけ。だれが流しているかは部屋の状態 bgm: { owner, title, startedAt } で全員が見る。
 // 曲のファイルは送らない。流している人の端末で鳴らした音を、声と同じ音の通り道で届ける（声の加工・口の動き・字幕は通らない）
 const MUSIC_SVG = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17.5V6l10-2v11.5"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/></svg>';
-const BGM = { file: null, track: null, vol: 20, loop: true };   // この端末で選んだ曲（ファイルか、用意した曲）・音量（%）・くり返す
+const BGM = { file: null, track: null, vol: 3, loop: true };   // この端末で選んだ曲（ファイルか、用意した曲）・音量（%）・くり返す
 // 用意した曲（app/sounds/bgm/）。名前はもとのファイル名から
 const BGM_TRACKS = [
   '明るい_爽やか_オープニング向き', '明るい_おしゃれ_会議の後ろ向き', 'ゆるい_のほほん_日常', '考え中_とぼけた_なんだろう',
@@ -1575,7 +1575,7 @@ function openSoundDialog() {
 // 押した人の端末で鳴らし、BGM と同じ通り道で全員に届ける（録画にも入る。声の加工・口の動き・字幕は通らない）。重ねて鳴らせる
 const SE_SVG = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>';
 const SE_LIST = ['ピンポーン！', 'キラキラ', 'ズビシ', 'ぶぶー', 'ジャン！', 'ズーン'].map((label, i) => ({ label, url: new URL(`../sounds/se/se${i + 1}.mp3`, import.meta.url).href }));
-const SE = { vol: 70, bufs: null };
+const SE = { vol: 10, bufs: null };
 // 初めて窓を開いたときに、6つとも読み込んでおく（押してすぐ鳴るように）
 function loadSe() {
   if (SE.bufs || !S.media) return;
